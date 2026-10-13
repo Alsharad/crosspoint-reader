@@ -137,28 +137,34 @@ void HyphenationManagerActivity::onEnter() {
     finish();
     return;
   }
-  if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
-  WiFi.mode(WIFI_STA);
-  wifiStarted_ = true;
+  {
+    RenderLock lock(*this);
+    if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
+  }
   auto wifi = makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput);
   if (!wifi) {
     LOG_ERR("HYPH", "OOM: Wi-Fi selection");
+    requestUpdate();
     return;
   }
+  WiFi.mode(WIFI_STA);
+  wifiStarted_ = true;
   startActivityForResult(std::move(wifi), [this](const ActivityResult& result) { onWifiReady(!result.isCancelled); });
 }
 
 void HyphenationManagerActivity::onExit() {
   UiListActivity::onExit();
-  if (wifiStarted_ && WiFi.getMode() != WIFI_MODE_NULL) {
+  const bool wifiActive = wifiStarted_ && WiFi.getMode() != WIFI_MODE_NULL;
+  if (wifiActive) {
     WiFi.disconnect(false);
     delay(30);
+  }
+  // SD import changes the retained reader's layout even when Wi-Fi never started.
+  if (wantedCode_[0] && HyphenationPackStore::isInstalled(wantedCode_)) {
+    silentRestartToReader();
+  } else if (wifiActive) {
     if (wantedCode_[0]) {
-      if (HyphenationPackStore::isInstalled(wantedCode_)) {
-        silentRestartToReader();
-      } else {
-        WiFi.mode(WIFI_OFF);
-      }
+      WiFi.mode(WIFI_OFF);
     } else {
       silentRestartToSettings();
     }
@@ -166,11 +172,14 @@ void HyphenationManagerActivity::onExit() {
 }
 
 bool HyphenationManagerActivity::loadManifest() {
-  if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
-  if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
-      ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
-    LOG_ERR("HYPH", "Low heap for language list");
-    return false;
+  {
+    RenderLock lock(*this);
+    if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
+    if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
+        ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
+      LOG_ERR("HYPH", "Low heap for language list");
+      return false;
+    }
   }
   Storage.remove(MANIFEST_TMP);
   if (HttpDownloader::downloadToFile(MANIFEST_URL, MANIFEST_TMP, nullptr) != HttpDownloader::OK) {
@@ -289,14 +298,14 @@ bool HyphenationManagerActivity::fileCrcMatches(const char* path, const uint32_t
 
 bool HyphenationManagerActivity::downloadPack(Pack& pack) {
   if (baseUrl_.empty() || !pack.size) return false;
-  if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
-  if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
-      ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
-    LOG_ERR("HYPH", "Low heap for pack download");
-    return false;
-  }
   {
     RenderLock lock(*this);
+    if (auto* cache = renderer.getFontCacheManager()) cache->releaseSdFontCaches();
+    if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
+        ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
+      LOG_ERR("HYPH", "Low heap for pack download");
+      return false;
+    }
     loading_ = true;
   }
   requestUpdateAndWait();

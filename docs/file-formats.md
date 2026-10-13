@@ -90,11 +90,12 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
-### Version 56
+### Version 57
 
 The header stores a `u32` hyphenation pack identity after
 `hyphenationEnabled`. A section is rebuilt when installing, updating, or
-removing the pack changes this value. Earlier caches are rebuilt.
+removing the pack changes this value. Earlier caches are rebuilt. Version 56
+was used by table-grid builds with a different serialized layout.
 
 ### Version 55
 
@@ -237,7 +238,12 @@ superscript, and subscript. The format also includes:
   on-disk order mirrors the in-RAM arena so the firmware reads a whole block
   payload with a single allocation and a single SD read
 
-ImHex pattern:
+Legacy ImHex illustration (not a decoder for current section caches):
+
+This example predates paragraph markers, source ranges, ruby text, and link
+serialization. Its version check and payload structures must not be used for
+version 57 files. See `Section.cpp`, `Page.cpp`, and `blocks/TextBlock.cpp`
+for the current serialized layout.
 
 ```c++
 import std.mem;

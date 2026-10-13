@@ -55,6 +55,9 @@ static const LanguageEntry* findLanguageEntry(const char* code) {
 }
 struct Cache { void releaseSdFontCaches() {} };
 struct Renderer { Cache* getFontCacheManager() { return nullptr; } };
+struct RenderLock {
+  template <typename Activity> explicit RenderLock(Activity&) {}
+};
 struct Esp {
   size_t getFreeHeap() { return 100000; }
   size_t getMaxAllocHeap() { return 100000; }
