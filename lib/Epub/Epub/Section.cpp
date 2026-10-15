@@ -64,9 +64,11 @@ namespace {
 // v53: Persist per-word source ranges alongside the redaction layout changes.
 // v54: Source ranges retain codepoints absorbed by NFC composition.
 // v55: Persist the first logical word of each paragraph for clipping separators.
-// v56 was used by table-grid builds with a different serialized layout.
+// v56: Split tokens at explicit hyphens and dashes.
 // v57: Record the installed hyphenation pack identity in the layout key.
-constexpr uint8_t SECTION_FILE_VERSION = 57;
+// v58 is used by table-grid builds with a different serialized layout.
+// v59: Combine explicit-hyphen line breaks with the hyphenation pack identity.
+constexpr uint8_t SECTION_FILE_VERSION = 59;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects

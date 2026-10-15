@@ -90,12 +90,14 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
-### Version 57
+### Version 59
 
 The header stores a `u32` hyphenation pack identity after
 `hyphenationEnabled`. A section is rebuilt when installing, updating, or
-removing the pack changes this value. Earlier caches are rebuilt. Version 56
-was used by table-grid builds with a different serialized layout.
+removing the pack changes this value. This retains version 57's identity check
+and includes version 56's explicit-hyphen/dash line breaks. Earlier completed
+and partial caches are rebuilt. Table-grid builds use version 58 with a
+different serialized layout.
 
 ### Version 55
 
@@ -242,7 +244,7 @@ Legacy ImHex illustration (not a decoder for current section caches):
 
 This example predates paragraph markers, source ranges, ruby text, and link
 serialization. Its version check and payload structures must not be used for
-version 57 files. See `Section.cpp`, `Page.cpp`, and `blocks/TextBlock.cpp`
+version 59 files. See `Section.cpp`, `Page.cpp`, and `blocks/TextBlock.cpp`
 for the current serialized layout.
 
 ```c++
