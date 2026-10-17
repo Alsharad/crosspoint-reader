@@ -26,7 +26,6 @@ using Input = WordSelectionInput;
 
 namespace {
 
-constexpr size_t FONT_PREWARM_TEXT_MAX = 2048;
 constexpr int TOUCH_DRAG_MOVEMENT_PX = 4;
 constexpr unsigned long TOUCH_PAGE_ADVANCE_HOLD_MS = 1000;
 constexpr int TOUCH_PAGE_END_DWELL_SLOP_PX = 8;
@@ -47,13 +46,15 @@ const char* cleanWordStart(const char* text) {
 
 ClipSelectionActivity::ClipSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                              std::vector<std::unique_ptr<Page>> pages, const int marginLeft,
-                                             const int marginTop, const int initialX, const int initialY)
+                                             const int marginTop, const int initialX, const int initialY,
+                                             const Mode mode)
     : Activity("ClipSelection", renderer, mappedInput),
       pages(std::move(pages)),
       marginLeft(marginLeft),
       marginTop(marginTop),
       initialX(initialX),
-      initialY(initialY) {}
+      initialY(initialY),
+      mode(mode) {}
 
 void ClipSelectionActivity::onEnter() {
   Activity::onEnter();
@@ -93,10 +94,6 @@ bool ClipSelectionActivity::extractWords() {
   }
   rowCount = 0;
   const bool needsFontPrewarm = renderer.isSdCardFont(fontId);
-  auto pageText = needsFontPrewarm ? makeUniqueNoThrow<char[]>(FONT_PREWARM_TEXT_MAX) : nullptr;
-  size_t pageTextLength = 0;
-  if (needsFontPrewarm && !pageText) LOG_DBG("CLIP", "Skipping SD font prewarm: OOM");
-  uint8_t styleMask = 0;
   bool paragraphStartPending = false;
 
   for (size_t pageOffset = 0; pageOffset < pages.size(); ++pageOffset) {
@@ -106,6 +103,18 @@ bool ClipSelectionActivity::extractWords() {
       const auto& line = static_cast<const PageLine&>(*element);
       const auto& block = line.getBlock();
       if (!block || !block->valid()) continue;
+
+      if (needsFontPrewarm && block->wordCount() != 0) {
+        uint8_t styleMask = 0;
+        for (uint16_t i = 0; i < block->wordCount(); ++i) {
+          styleMask |= static_cast<uint8_t>(1U << (static_cast<uint8_t>(block->wordStyle(i)) & 0x03));
+        }
+        // Borrow the line's packed words to prepare advances before measuring, without copying or truncating text.
+        const char* text = block->wordText(0);
+        const uint16_t lastWord = block->wordCount() - 1;
+        const size_t textLength = block->wordText(lastWord) + block->wordTextLen(lastWord) + 1 - text;
+        renderer.ensureSdCardFontReady(fontId, &text, &textLength, 1, false, false, styleMask);
+      }
 
       const size_t lineStart = wordCount;
       const bool isRtl = block->getBlockStyle().isRtl;
@@ -144,13 +153,6 @@ bool ClipSelectionActivity::extractWords() {
         word.paragraphStart = false;
         word.isRtl = isRtl;
         word.discretionaryHyphen = block->wordHasDiscretionaryHyphen(i);
-        if (pageText) {
-          for (const char* p = text; *p != '\0' && pageTextLength + 1 < FONT_PREWARM_TEXT_MAX; ++p) {
-            pageText[pageTextLength++] = *p;
-          }
-          if (pageTextLength + 1 < FONT_PREWARM_TEXT_MAX) pageText[pageTextLength++] = ' ';
-        }
-        styleMask |= static_cast<uint8_t>(1U << (static_cast<uint8_t>(style) & 0x03));
         if (isRtl) ++rtlWordCount;
       }
       if (isRtl) {
@@ -178,12 +180,6 @@ bool ClipSelectionActivity::extractWords() {
       }
     }
     if (wordCount == MAX_SELECTABLE_WORDS) break;
-  }
-
-  if (styleMask == 0) styleMask = 0x01;
-  if (pageText) {
-    pageText[pageTextLength] = '\0';
-    renderer.ensureSdCardFontReady(fontId, pageText.get(), styleMask);
   }
 
   return true;
@@ -568,7 +564,7 @@ bool ClipSelectionActivity::handleButtons(const uint8_t buttons) {
   }
 
   if (buttons & Input::INPUT_CONFIRM) {
-    confirmSelection();
+    confirmSelection(mode == Mode::Lookup ? ClippingResult::Action::Lookup : ClippingResult::Action::Clip);
     return true;
   }
 
@@ -742,7 +738,8 @@ bool ClipSelectionActivity::renderIncremental() {
 
   // Case 2: Transition from rangeStart < 0 to rangeStart >= 0 (user just confirmed rangeStart)
   if (rangeStart >= 0 && lastRenderedRangeStart < 0 && rangeStart == selected && selected == lastRenderedSelected) {
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_DONE), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), mode == Mode::Lookup ? tr(STR_LOOKUP) : tr(STR_DONE),
+                                              tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 
@@ -783,7 +780,8 @@ bool ClipSelectionActivity::renderIncremental() {
     const WordBox& cursor = words[selected];
     renderer.drawRect(cursor.x + offsetX, cursor.y + offset, cursor.width, cursor.height, true);
 
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_DONE), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), mode == Mode::Lookup ? tr(STR_LOOKUP) : tr(STR_DONE),
+                                              tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 
@@ -845,8 +843,9 @@ void ClipSelectionActivity::render(RenderLock&&) {
   if (wordCount != 0) drawSelection();
   renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), rangeStart < 0 ? tr(STR_SELECT) : tr(STR_DONE),
-                                            tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
+  const auto labels = mappedInput.mapLabels(
+      tr(STR_BACK), rangeStart < 0 ? tr(STR_SELECT) : (mode == Mode::Lookup ? tr(STR_LOOKUP) : tr(STR_DONE)),
+      tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
 
