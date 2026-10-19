@@ -296,7 +296,7 @@ Settings are grouped into **System**, **Display**, **Reader**, **Controls**, **L
 
 - **Text Anti-Aliasing**: Whether to show smooth grey edges (anti-aliasing) on text in reading mode. Note this slows down page turns slightly.
 
-- **Images**: Whether to display embedded images (JPG/PNG) found in EPUB files; options are "ON" (default) or "OFF".
+- **Images**: Whether to display embedded images (JPG/PNG/GIF) found in EPUB files; options are "ON" (default) or "OFF". GIFs render only the first frame; interlaced GIFs are not supported.
 
 - **Focus Reading**: Bolds the first part of each word to create visual fixation points, similar to Bionic Reading. This can help improve reading speed and focus; options are "ON" or "OFF" (default).
 
@@ -738,7 +738,7 @@ Local book and folder moves carry clipping data with them. Deleting a local book
 Please note that this firmware is currently in active development. The following features are **not yet supported** but are planned for future updates:
 
 * **Cover Images:** Large cover images embedded into EPUB require several seconds (~10s for ~2000 pixel tall image) to convert for sleep screen and home screen thumbnail. Consider optimizing the EPUB with e.g. https://github.com/bigbag/epub-to-xtc-converter to speed this up.
-* **Unsupported Image Formats:** Most JPG and PNG images in EPUBs render correctly. GIFs and progressive JPEGs are not supported and will fall back to an `[Image]` placeholder.
+* **Image Support:** Most JPG, PNG and non-interlaced GIF images in EPUBs render correctly, including book covers. Animated GIFs show only the first frame. Interlaced GIFs are not supported and use an outlined image placeholder.
 
 ---
 
