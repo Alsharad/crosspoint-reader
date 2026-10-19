@@ -32,7 +32,7 @@ SOFTWARE.
 
 ========================================================================
 components/lwip/lwip/COPYING
-Source: https://github.com/espressif/esp-idf/tree/v5.5.5/components/lwip/lwip/COPYING
+Source: https://github.com/espressif/esp-lwip/blob/fd432e4ee2cfb7f7f1c7eb7227e0173412e7b84e/COPYING
 ========================================================================
 
 Copyright (c) 2001, 2002 Swedish Institute of Computer Science.
@@ -62,7 +62,7 @@ OF SUCH DAMAGE.
 
 ========================================================================
 components/mbedtls/mbedtls/LICENSE
-Source: https://github.com/espressif/esp-idf/tree/v5.5.5/components/mbedtls/mbedtls/LICENSE
+Source: https://github.com/espressif/mbedtls/blob/9d669eadb1955d348986b9280156710aaaadf79f/LICENSE
 ========================================================================
 
 Mbed TLS files are provided under a dual [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html)
@@ -1654,7 +1654,7 @@ SUCH DAMAGE.
 
 ========================================================================
 components/bt/host/nimble/nimble/NOTICE
-Source: https://github.com/espressif/esp-idf/tree/v5.5.5/components/bt/host/nimble/nimble/NOTICE
+Source: https://github.com/espressif/esp-nimble/blob/685675c0128deafdd201c9eb82e61d227364646c/NOTICE
 ========================================================================
 
 Apache Mynewt NimBLE
@@ -1669,7 +1669,7 @@ Runtime Inc, copyright 2015.
 
 ========================================================================
 components/bt/host/nimble/nimble/ext/tinycrypt/LICENSE
-Source: https://github.com/espressif/esp-idf/tree/v5.5.5/components/bt/host/nimble/nimble/ext/tinycrypt/LICENSE
+Source: https://github.com/espressif/esp-nimble/blob/685675c0128deafdd201c9eb82e61d227364646c/ext/tinycrypt/LICENSE
 ========================================================================
 
 
