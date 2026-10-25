@@ -683,6 +683,30 @@ TEST_F(CssParserTest, FontFamilyListPicksTheFirstEmbeddedName) {
   EXPECT_EQ(parser.resolveStyle("p", "initial").fontFamily, 0u);
 }
 
+TEST_F(CssParserTest, FontFamilyKeepsItsGenericFallback) {
+  CssParser writer(cachePath());
+  ASSERT_EQ(loadCss(writer,
+                    ".code { font-family: Courier, monospace; }\n"
+                    ".serif { font-family: serif; }\n"
+                    ".hand { font-family: 'Brush Script', cursive, sans-serif; }\n"
+                    ".fantasy { font-family: fantasy; }\n",
+                    "OEBPS/Styles/"),
+            CssParser::ParseResult::Complete);
+  ASSERT_TRUE(writer.saveToCache(true));
+  CssParser reader(cachePath());
+  ASSERT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Complete);
+  for (const CssParser* parser : {&writer, &reader}) {
+    const CssStyle code = parser->resolveStyle("p", "code");
+    EXPECT_EQ(code.fontFamily, CssParser::hashFontFamily("Courier"));
+    EXPECT_EQ(code.fontGeneric, CssGenericFamily::Monospace);
+    const CssStyle serif = parser->resolveStyle("p", "serif");
+    EXPECT_EQ(serif.fontFamily, 0u);
+    EXPECT_EQ(serif.fontGeneric, CssGenericFamily::Serif);
+    EXPECT_EQ(parser->resolveStyle("p", "hand").fontGeneric, CssGenericFamily::Cursive);
+    EXPECT_EQ(parser->resolveStyle("p", "fantasy").fontGeneric, CssGenericFamily::None);
+  }
+}
+
 TEST_F(CssParserTest, CollectsFontFacesAndFontFamilies) {
   CssParser writer(cachePath());
   ASSERT_EQ(loadCss(writer,

@@ -75,6 +75,15 @@ enum class CssVerticalAlign : uint8_t { Baseline = 0, Super = 1, Sub = 2 };
 // list-style-type — only None and Disc (bullet) are relevant for rendering
 enum class CssListStyleType : uint8_t { Disc = 0, None = 1 };
 
+// The generic family a font-family list falls back to; the reader maps each to an installed font.
+enum class CssGenericFamily : uint8_t { None = 0, Serif = 1, SansSerif = 2, Monospace = 3, Cursive = 4 };
+constexpr uint8_t CSS_GENERIC_FAMILY_COUNT = 5;
+
+// Font family ids standing for a mapped generic family, outside the range of name hashes.
+constexpr uint32_t genericFamilyId(const CssGenericFamily generic) {
+  return generic == CssGenericFamily::None ? 0 : 0xFFFFFFF0u + static_cast<uint32_t>(generic);
+}
+
 enum class CssBorderStyle : uint8_t { None = 0, Solid = 1, Double = 2, Dotted = 3, Dashed = 4 };
 
 // One box edge. Width is in CSS pixels; a side draws only when both width and style are set.
@@ -210,6 +219,9 @@ struct CssStyle {
   // select the reader font; FONT_FAMILY_INHERIT for `inherit`/`unset`.
   uint32_t fontFamily = 0;
   static constexpr uint32_t FONT_FAMILY_INHERIT = 0xFFFFFFFFu;
+  // The list's first generic family (serif, sans-serif, monospace, cursive), used when the
+  // named family is not available.
+  CssGenericFamily fontGeneric = CssGenericFamily::None;
   // True when the element names its own family; `inherit` keeps the parent's.
   [[nodiscard]] bool setsFontFamily() const { return defined.fontFamily && fontFamily != FONT_FAMILY_INHERIT; }
 
@@ -350,6 +362,7 @@ struct CssStyle {
     }
     if (base.defined.fontFamily) {
       fontFamily = base.fontFamily;
+      fontGeneric = base.fontGeneric;
       defined.fontFamily = 1;
     }
   }

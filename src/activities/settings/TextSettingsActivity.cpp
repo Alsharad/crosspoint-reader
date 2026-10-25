@@ -27,15 +27,25 @@ constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_L
 constexpr StrId LAYOUT_ROW_NAME_IDS[] = {
     StrId::STR_LINE_SPACING,          StrId::STR_WORD_SPACING, StrId::STR_CHARACTER_SPACING, StrId::STR_EXTRA_SPACING,
     StrId::STR_PARAGRAPH_INDENTATION, StrId::STR_ALIGNMENT,    StrId::STR_SCREEN_MARGIN};
-constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING, StrId::STR_HYPHENATION, StrId::STR_EMBEDDED_STYLE,
+constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING,   StrId::STR_HYPHENATION, StrId::STR_EMBEDDED_STYLE,
                                         StrId::STR_TEXT_AA,
 #if CROSSPOINT_VECTOR_FONTS
-                                        StrId::STR_PUBLISHER_FONTS
+                                        StrId::STR_PUBLISHER_FONTS, StrId::STR_SERIF_FONT,  StrId::STR_SANS_SERIF_FONT,
+                                        StrId::STR_MONOSPACE_FONT,  StrId::STR_CURSIVE_FONT
 #endif
 };
 #if CROSSPOINT_VECTOR_FONTS
 constexpr StrId PUBLISHER_FONTS_IDS[] = {StrId::STR_STATE_OFF, StrId::STR_PUBLISHER_FONTS_ACCENTS,
                                          StrId::STR_PUBLISHER_FONTS_ALL};
+
+// Vector (TrueType/OpenType) families only: those are the ones that render at any size.
+std::vector<std::string> vectorFontFamilies() {
+  std::vector<std::string> names;
+  for (const auto& family : sdFontSystem.registry().getFamilies()) {
+    if (family.vector) names.push_back(family.name);
+  }
+  return names;
+}
 #endif
 
 int findCurrentFontIndex(const SdCardFontRegistry* registry, const char* sdFontFamilyName, uint8_t fontFamily) {
@@ -242,6 +252,9 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
         if (i == static_cast<int>(StyleRow::PublisherFonts)) {
           const uint8_t v = SETTINGS.publisherFonts;
           rowValues_[i] = I18N.get(v < std::size(PUBLISHER_FONTS_IDS) ? PUBLISHER_FONTS_IDS[v] : StrId::STR_STATE_OFF);
+        } else if (const int generic = genericFontIndex(i); generic >= 0) {
+          const char* name = SETTINGS.genericFontNames[generic];
+          rowValues_[i] = name[0] != '\0' ? name : tr(STR_USE_READER_FONT);
         }
         break;
 #endif
@@ -281,7 +294,9 @@ const char* TextSettingsActivity::confirmLabelText() const {
       return ringPos() - 1 == static_cast<int>(LayoutRow::ParaSpacing) ? tr(STR_TOGGLE) : tr(STR_SELECT);
     case Tab::Style:
 #if CROSSPOINT_VECTOR_FONTS
-      if (ringPos() - 1 == static_cast<int>(StyleRow::PublisherFonts)) return tr(STR_SELECT);
+      if (ringPos() - 1 == static_cast<int>(StyleRow::PublisherFonts) || genericFontIndex(ringPos() - 1) >= 0) {
+        return tr(STR_SELECT);
+      }
 #endif
       return tr(STR_TOGGLE);
     default:
@@ -498,6 +513,13 @@ std::string TextSettingsActivity::layoutValueText(int row) const {
   }
 }
 
+#if CROSSPOINT_VECTOR_FONTS
+int TextSettingsActivity::genericFontIndex(const int row) {
+  const int first = static_cast<int>(StyleRow::SerifFont);
+  return row >= first && row < first + CrossPointSettings::GENERIC_FONT_COUNT ? row - first : -1;
+}
+#endif
+
 void TextSettingsActivity::confirmStyleRow(int row) {
   switch (static_cast<StyleRow>(row)) {
     case StyleRow::FocusReading:
@@ -521,6 +543,33 @@ void TextSettingsActivity::confirmStyleRow(int row) {
                         });
       requestUpdate();
       return;
+    case StyleRow::SerifFont:
+    case StyleRow::SansSerifFont:
+    case StyleRow::MonospaceFont:
+    case StyleRow::CursiveFont: {
+      const int generic = genericFontIndex(row);
+      std::vector<std::string> families = vectorFontFamilies();
+      int current = 0;
+      for (size_t i = 0; i < families.size(); ++i) {
+        if (families[i] == SETTINGS.genericFontNames[generic]) current = static_cast<int>(i) + 1;
+      }
+      std::vector<std::string> options;
+      options.reserve(families.size() + 1);
+      options.emplace_back(tr(STR_USE_READER_FONT));
+      options.insert(options.end(), families.begin(), families.end());
+      optionPopup_.show(STYLE_ROW_NAME_IDS[row], options, current, [generic, families](int idx) {
+        char* field = SETTINGS.genericFontNames[generic];
+        if (idx <= 0 || idx > static_cast<int>(families.size())) {
+          field[0] = '\0';
+        } else {
+          strncpy(field, families[idx - 1].c_str(), sizeof(SETTINGS.genericFontNames[generic]) - 1);
+          field[sizeof(SETTINGS.genericFontNames[generic]) - 1] = '\0';
+        }
+        SETTINGS.saveToFile();
+      });
+      requestUpdate();
+      return;
+    }
 #endif
 
     default:

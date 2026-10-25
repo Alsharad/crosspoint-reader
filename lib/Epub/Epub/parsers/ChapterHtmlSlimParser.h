@@ -89,6 +89,7 @@ class ChapterHtmlSlimParser {
     float fontScale = 1.0f;
     bool hasFontFamily = false;
     uint32_t fontFamily = 0;  // CssStyle::fontFamily
+    CssGenericFamily fontGeneric = CssGenericFamily::None;
     bool blockLevel = false;  // pushed by a block element, so it sets the paragraph's family
   };
   std::vector<StyleStackEntry> inlineStyleStack;
@@ -118,6 +119,7 @@ class ChapterHtmlSlimParser {
   bool bodyFontDetected = false;
   std::vector<uint32_t> embeddedFamilies;
   bool embeddedFamiliesKnown = false;
+  uint8_t genericFontsMask = 0;
   bool detectBodyFont();
   bool pendingPageBreak = false;  // set when a page-break-after element closes
 
@@ -134,6 +136,7 @@ class ChapterHtmlSlimParser {
     int spanDepth = -1;               // capturing the text of the span at this depth
     bool hasFamily = false;           // the letter's own font-family; otherwise the paragraph's
     uint32_t family = 0;
+    CssGenericFamily generic = CssGenericFamily::None;
   } dropCap;
 
   // Open elements with a CSS border or background shade. Each emits a PageBorderBox around
@@ -352,6 +355,12 @@ class ChapterHtmlSlimParser {
     embeddedFamilies = std::move(families);
     embeddedFamiliesKnown = true;
   }
+  // Generic families mapped to an installed font, one bit per CssGenericFamily.
+  void setGenericFonts(const uint8_t mask) { genericFontsMask = mask; }
+  // The font a family list draws in: the named family when the book embeds it, else the
+  // mapped generic family's id, else the named family (which falls back to the reader font).
+  uint32_t chooseFamily(uint32_t named, CssGenericFamily generic) const;
+  bool isEmbeddedFamily(uint32_t family) const;
 
   // One-shot parse: builds every page before returning (begin + step* + finish).
   bool parseAndBuildPages();

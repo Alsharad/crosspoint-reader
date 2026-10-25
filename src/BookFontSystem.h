@@ -16,7 +16,8 @@ class Epub;
 class GfxRenderer;
 class TtfEpdFont;
 
-/// Fonts embedded in the open EPUB through @font-face. Each family's files are read
+/// Fonts embedded in the open EPUB through @font-face, and the installed fonts mapped to the
+/// CSS generic families (serif, sans-serif, monospace, cursive) in the settings. Each family's files are read
 /// from the book into PSRAM the first time layout asks for that family, then rendered
 /// at any size through TtfEpdFont. PSRAM boards only: a family can hold a few hundred
 /// KB of font bytes plus per-size glyph caches.
@@ -44,6 +45,7 @@ class BookFontSystem {
     freeink::font::PsramVector<uint8_t> bytes[4];  // font files, empty = absent
     bool bytesLoaded = false;                      // read attempted
     bool failed = false;                           // unreadable (e.g. obfuscated): use the reader font
+    bool fromSd = false;                           // a mapped generic family: hrefs are SD card paths
   };
   struct Loaded {
     int fontId;
@@ -55,9 +57,13 @@ class BookFontSystem {
 
   static int fontIdFor(uint32_t family, uint8_t pointSize);
   bool readFamilyBytes(Family& family);
+  // Re-reads the generic family mapping from the settings; keeps families whose font is unchanged.
+  void refreshGenericFamilies();
+  void dropFamily(size_t index);
   bool loadFont(Family& family, uint8_t pointSize, int fontId);
 
   std::shared_ptr<Epub> epub_;
+  std::string genericNames_[4];  // mapped font per CssGenericFamily - 1, as last applied
   GfxRenderer* renderer_ = nullptr;
   std::vector<Family> families_;
   std::vector<Loaded> loaded_;

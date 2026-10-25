@@ -365,6 +365,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t readerMenuStyle = READER_MENU_LIST;
   // SD card font family name (empty = use built-in fontFamily)
   char sdFontFamilyName[32] = "";
+  // Installed font family for CSS serif, sans-serif, monospace and cursive text, indexed by
+  // CssGenericFamily - 1 (empty = the reader font). Used while Publisher Fonts is not Off.
+  static constexpr int GENERIC_FONT_COUNT = 4;
+  char genericFontNames[GENERIC_FONT_COUNT][32] = {};
+  static constexpr const char* GENERIC_FONT_KEYS[GENERIC_FONT_COUNT] = {"serifFont", "sansSerifFont", "monospaceFont",
+                                                                        "cursiveFont"};
   // Dictionary folder name under /dictionaries (empty = no dictionary)
   char dictionaryName[32] = "";
   // Master switch for all SD-card plugin discovery/execution. New installs keep

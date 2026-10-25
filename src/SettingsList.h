@@ -6,6 +6,7 @@
 #include <HalTiltSensor.h>
 #include <I18n.h>
 #include <SdCardFontRegistry.h>
+#include <VectorFontSupport.h>
 
 #include <algorithm>
 #include <cstring>
@@ -96,6 +97,44 @@ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
 
   return s;
 }
+
+#if CROSSPOINT_VECTOR_FONTS
+// A generic family font (serif, sans-serif, monospace, cursive): the reader font or an
+// installed vector font, stored by name in SETTINGS.genericFontNames[index].
+inline SettingInfo buildGenericFontSetting(const SdCardFontRegistry* registry, const StrId nameId, const int index) {
+  std::vector<std::string> families;
+  if (registry) {
+    for (const auto& family : registry->getFamilies()) {
+      if (family.vector) families.push_back(family.name);
+    }
+  }
+  SettingInfo s;
+  s.nameId = nameId;
+  s.type = SettingType::ENUM;
+  s.enumStringValues.reserve(families.size() + 1);
+  s.enumStringValues.push_back(I18N.get(StrId::STR_USE_READER_FONT));
+  s.enumStringValues.insert(s.enumStringValues.end(), families.begin(), families.end());
+  s.key = CrossPointSettings::GENERIC_FONT_KEYS[index];
+  s.category = StrId::STR_CAT_READER;
+  s.inTextSettings = true;
+  s.valueGetter = [families, index]() -> uint8_t {
+    for (size_t i = 0; i < families.size(); ++i) {
+      if (families[i] == SETTINGS.genericFontNames[index]) return static_cast<uint8_t>(i + 1);
+    }
+    return 0;
+  };
+  s.valueSetter = [families, index](const uint8_t v) {
+    char* field = SETTINGS.genericFontNames[index];
+    if (v == 0 || v > families.size()) {
+      field[0] = '\0';
+      return;
+    }
+    strncpy(field, families[v - 1].c_str(), sizeof(SETTINGS.genericFontNames[index]) - 1);
+    field[sizeof(SETTINGS.genericFontNames[index]) - 1] = '\0';
+  };
+  return s;
+}
+#endif
 
 // Build the font size setting dynamically: the options are the point sizes the
 // active family actually ships, so an SD family built at 10/12/14 offers three
@@ -327,6 +366,15 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
       *it = buildFontSizeSetting(registry);
     }
   }
+#if CROSSPOINT_VECTOR_FONTS
+  for (auto& setting : v) {
+    for (int i = 0; i < CrossPointSettings::GENERIC_FONT_COUNT; ++i) {
+      if (setting.key && strcmp(setting.key, CrossPointSettings::GENERIC_FONT_KEYS[i]) == 0) {
+        setting = buildGenericFontSetting(registry, setting.nameId, i);
+      }
+    }
+  }
+#endif
   if (dictionaries && !dictionaries->empty()) {
     // Insert at the end of the Reader category (just before the first Controls entry).
     auto it =

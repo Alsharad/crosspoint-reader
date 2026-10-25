@@ -7,6 +7,7 @@
 #include <FontPsram.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
+#include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <Print.h>
@@ -17,6 +18,7 @@
 #include <cstring>
 
 #include "CrossPointSettings.h"
+#include "SdCardFontSystem.h"
 
 BookFontSystem bookFontSystem;
 
@@ -52,15 +54,18 @@ BookFontSystem::BookFontSystem() = default;
 BookFontSystem::~BookFontSystem() = default;
 
 void BookFontSystem::open(const std::shared_ptr<Epub>& epub, GfxRenderer& renderer) {
-  if (epub_ == epub) return;
+  if (epub_ == epub) {
+    refreshGenericFamilies();
+    return;
+  }
   close();
   epub_ = epub;
   renderer_ = &renderer;
   loaded_.reserve(MAX_LOADED);
 
   std::vector<CssFontFace> faces;
-  if (!CssParser::loadFontFaces(epub->getCachePath(), faces)) return;
-  families_.reserve(faces.size());
+  CssParser::loadFontFaces(epub->getCachePath(), faces);  // none: the book embeds no fonts
+  families_.reserve(faces.size() + CrossPointSettings::GENERIC_FONT_COUNT);
   for (CssFontFace& face : faces) {
     auto family = std::find_if(families_.begin(), families_.end(),
                                [&face](const Family& candidate) { return candidate.hash == face.family; });
@@ -81,9 +86,61 @@ void BookFontSystem::open(const std::shared_ptr<Epub>& epub, GfxRenderer& render
     }
   }
   LOG_DBG("BKF", "%u embedded font families", static_cast<unsigned>(families_.size()));
+  refreshGenericFamilies();
+}
+
+void BookFontSystem::dropFamily(const size_t index) {
+  for (auto it = loaded_.begin(); it != loaded_.end();) {
+    bool ofFamily = false;
+    for (int pointSize = 6; pointSize <= 72 && !ofFamily; ++pointSize) {
+      ofFamily = it->fontId == fontIdFor(families_[index].hash, static_cast<uint8_t>(pointSize));
+    }
+    if (ofFamily) {
+      renderer_->unregisterTtfFont(it->fontId);
+      renderer_->removeFont(it->fontId);
+      it = loaded_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  families_.erase(families_.begin() + static_cast<std::ptrdiff_t>(index));
+}
+
+void BookFontSystem::refreshGenericFamilies() {
+  const SdCardFontRegistry& registry = sdFontSystem.registry();
+  for (int i = 0; i < CrossPointSettings::GENERIC_FONT_COUNT; ++i) {
+    std::string name = SETTINGS.genericFontNames[i];
+    // The reader font is already loaded; mapping a family to it changes nothing.
+    if (name == SETTINGS.sdFontFamilyName) name.clear();
+    if (name == genericNames_[i]) continue;
+    genericNames_[i] = name;
+    const uint32_t hash = genericFamilyId(static_cast<CssGenericFamily>(i + 1));
+    for (size_t f = 0; f < families_.size(); ++f) {
+      if (families_[f].hash == hash) {
+        dropFamily(f);
+        break;
+      }
+    }
+    const SdCardFontFamilyInfo* info = name.empty() ? nullptr : registry.findFamily(name);
+    if (!info || !info->vector) continue;
+    Family family;
+    family.hash = hash;
+    family.fromSd = true;
+    char path[SdCardFontFamilyInfo::PATH_BUFFER_SIZE];
+    for (const auto& file : info->files) {
+      if (file.style < 4 && family.hrefs[file.style].empty() && info->filePath(file, path, sizeof(path))) {
+        family.hrefs[file.style] = path;
+      }
+    }
+    for (auto& href : family.hrefs) {
+      if (family.hrefs[TtfEpdFont::Regular].empty()) std::swap(family.hrefs[TtfEpdFont::Regular], href);
+    }
+    if (!family.hrefs[TtfEpdFont::Regular].empty()) families_.push_back(std::move(family));
+  }
 }
 
 void BookFontSystem::close() {
+  for (auto& name : genericNames_) name.clear();
   for (const auto& loaded : loaded_) {
     renderer_->unregisterTtfFont(loaded.fontId);
     renderer_->removeFont(loaded.fontId);
@@ -134,7 +191,13 @@ bool BookFontSystem::readFamilyBytes(Family& family) {
     const std::string& href = family.hrefs[role];
     if (href.empty()) continue;
     size_t size = 0;
-    if (!epub_->getItemSize(href, &size) || size == 0 || size > MAX_FONT_BYTES) {
+    HalFile sdFile;
+    if (family.fromSd) {
+      if (Storage.openFileForRead("BKF", href, sdFile)) size = sdFile.size();
+    } else if (!epub_->getItemSize(href, &size)) {
+      size = 0;
+    }
+    if (size == 0 || size > MAX_FONT_BYTES) {
       LOG_ERR("BKF", "Skipping font %s (%u bytes)", href.c_str(), static_cast<unsigned>(size));
       continue;
     }
@@ -145,8 +208,20 @@ bool BookFontSystem::readFamilyBytes(Family& family) {
     }
     auto& bytes = family.bytes[role];
     bytes.resize(size);
-    BufferPrint sink(bytes.data(), size);
-    if (!epub_->readItemContentsToStream(href, sink, 4096) || sink.used() != size) {
+    bool read = false;
+    if (family.fromSd) {
+      size_t done = 0;
+      while (done < size) {
+        const int n = sdFile.read(bytes.data() + done, std::min<size_t>(size - done, 4096));
+        if (n <= 0) break;
+        done += static_cast<size_t>(n);
+      }
+      read = done == size;
+    } else {
+      BufferPrint sink(bytes.data(), size);
+      read = epub_->readItemContentsToStream(href, sink, 4096) && sink.used() == size;
+    }
+    if (!read) {
       LOG_ERR("BKF", "Failed to read font %s", href.c_str());
       freeink::font::PsramVector<uint8_t>().swap(bytes);
     }

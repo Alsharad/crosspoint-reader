@@ -1416,6 +1416,50 @@ TEST_F(PublisherBodyFontTest, BookWithoutEmbeddedFontsSkipsBodyFontDetection) {
   EXPECT_FALSE(parser.bodyFontDetected);
 }
 
+TEST_F(PublisherBodyFontTest, MappedGenericFamilyReplacesAMissingNamedFont) {
+  // Fixture font ids by index: EBGaramond 900100, YatraOne 901100, Roboto 902100, mapped monospace 903100.
+  renderer.embeddedFamilies.push_back(genericFamilyId(CssGenericFamily::Monospace));
+  parser.setEmbeddedFamilies({CssParser::hashFontFamily("EBGaramond"), CssParser::hashFontFamily("YatraOne"),
+                              CssParser::hashFontFamily("Roboto")});
+  parser.setGenericFonts(1u << static_cast<uint8_t>(CssGenericFamily::Monospace));
+  parse(
+      "<html><body><p>Ordinary prose stays in the selected reader font.</p>"
+      "<p>Run <span style='font-family: Courier, monospace'>ls</span> and "
+      "<span style='font-family: Roboto, monospace'>quote</span> then "
+      "<span style='font-family: serif'>plain</span>.</p></body></html>");
+  EXPECT_EQ(fontFor("ls"), 903100);     // Courier is not embedded: the mapped monospace font
+  EXPECT_EQ(fontFor("quote"), 902100);  // Roboto is embedded and listed first
+  EXPECT_EQ(fontFor("plain"), 0);       // serif is not mapped
+  EXPECT_EQ(fontFor("Run"), 0);
+}
+
+TEST_F(PublisherBodyFontTest, MappedSerifBodyStaysInTheReaderFontUnlessAllText) {
+  renderer.embeddedFamilies.push_back(genericFamilyId(CssGenericFamily::Serif));
+  parser.setEmbeddedFamilies({});
+  parser.setGenericFonts(1u << static_cast<uint8_t>(CssGenericFamily::Serif));
+  const std::string html =
+      "<html><body style='font-family: Georgia, serif'><p>Ordinary narrative prose in the body font.</p>"
+      "<p>More narrative prose.</p></body></html>";
+  parse(html);
+  EXPECT_EQ(parser.bodyFontFamily, genericFamilyId(CssGenericFamily::Serif));
+  EXPECT_EQ(fontFor("Ordinary"), 0);
+}
+
+TEST_F(PublisherBodyFontTest, MappedSerifBodyUsesTheMappedFontInAllText) {
+  renderer.embeddedFamilies.push_back(genericFamilyId(CssGenericFamily::Serif));
+  parser.setEmbeddedFamilies({});
+  parser.setGenericFonts(1u << static_cast<uint8_t>(CssGenericFamily::Serif));
+  parse("<html><body style='font-family: Georgia, serif'><p>Ordinary prose.</p></body></html>", PublisherFonts::All);
+  EXPECT_EQ(fontFor("Ordinary"), 903100);
+}
+
+TEST_F(PublisherBodyFontTest, OffIgnoresMappedGenericFamilies) {
+  renderer.embeddedFamilies.push_back(genericFamilyId(CssGenericFamily::Monospace));
+  parser.setGenericFonts(1u << static_cast<uint8_t>(CssGenericFamily::Monospace));
+  parse("<html><body><p>Run <span style='font-family: monospace'>ls</span>.</p></body></html>", PublisherFonts::Off);
+  EXPECT_EQ(fontFor("ls"), 0);
+}
+
 TEST_F(PublisherBodyFontTest, ReaderFontParagraphsKeepMinorityEmbeddedAccents) {
   parse(
       "<html><body><p>Ordinary prose stays in the selected reader font without an embedded family.</p>"

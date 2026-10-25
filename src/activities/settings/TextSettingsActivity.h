@@ -47,9 +47,17 @@ class TextSettingsActivity final : public UiTabListActivity {
     AntiAliasing,
 #if CROSSPOINT_VECTOR_FONTS
     PublisherFonts,  // option popup, not a checkbox
+    SerifFont,       // generic family fonts: option popups over the installed vector fonts
+    SansSerifFont,
+    MonospaceFont,
+    CursiveFont,
 #endif
     Count
   };
+#if CROSSPOINT_VECTOR_FONTS
+  // The Style row's index into SETTINGS.genericFontNames, or -1.
+  static int genericFontIndex(int row);
+#endif
 
   // --- UiTabListActivity contract ---
   int listCount() const override;

@@ -245,16 +245,25 @@ constexpr std::string_view unquoteCss(std::string_view s) {
 
 // Hash of the first family in a font-family list; 0 when it is a generic family or
 // keyword, which leaves the text in the reader font.
-uint32_t fontFamilyFromList(const std::string_view value, const std::vector<CssFontFace>* faces) {
-  constexpr std::string_view GENERIC[] = {"serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui"};
+void parseFontFamilyList(const std::string_view value, const std::vector<CssFontFace>* faces, CssStyle& style) {
+  struct Generic {
+    std::string_view name;
+    CssGenericFamily family;
+  };
+  constexpr Generic GENERIC[] = {
+      {"serif", CssGenericFamily::Serif},         {"sans-serif", CssGenericFamily::SansSerif},
+      {"monospace", CssGenericFamily::Monospace}, {"cursive", CssGenericFamily::Cursive},
+      {"fantasy", CssGenericFamily::None},        {"system-ui", CssGenericFamily::None}};
   uint32_t firstNamed = 0;
   uint32_t embedded = 0;
+  bool genericSeen = false;
+  CssGenericFamily generic = CssGenericFamily::None;
   bool keyword = false;
   uint32_t keywordValue = 0;
   forEachDelimitedToken(
       value, [](const char c) { return c == ','; },
       [&](const std::string_view token) {
-        if (keyword || embedded != 0) return;
+        if (keyword) return;
         const std::string_view name = unquoteCss(token);
         if (name.empty()) return;
         if (iequalsAscii(name, "inherit") || iequalsAscii(name, "unset")) {
@@ -266,9 +275,14 @@ uint32_t fontFamilyFromList(const std::string_view value, const std::vector<CssF
           keyword = true;
           return;
         }
-        for (const std::string_view generic : GENERIC) {
-          if (iequalsAscii(name, generic)) return;
+        for (const Generic& candidate : GENERIC) {
+          if (iequalsAscii(name, candidate.name)) {
+            if (!genericSeen) generic = candidate.family;
+            genericSeen = true;
+            return;
+          }
         }
+        if (embedded != 0) return;
         const uint32_t hash = CssParser::hashFontFamily(name);
         if (faces && std::any_of(faces->begin(), faces->end(),
                                  [hash](const CssFontFace& face) { return face.family == hash; })) {
@@ -277,8 +291,14 @@ uint32_t fontFamilyFromList(const std::string_view value, const std::vector<CssF
           firstNamed = hash;
         }
       });
-  if (keyword) return keywordValue;
-  return embedded != 0 ? embedded : firstNamed;
+  if (keyword) {
+    style.fontFamily = keywordValue;
+    style.fontGeneric = CssGenericFamily::None;
+  } else {
+    style.fontFamily = embedded != 0 ? embedded : firstNamed;
+    style.fontGeneric = generic;
+  }
+  style.defined.fontFamily = 1;
 }
 
 // Parse the entirety of s as a number into `out`. Accepts an optional leading
@@ -475,7 +495,7 @@ constexpr std::array STYLE_LENGTH_FIELDS = {
 };
 constexpr size_t STYLE_LENGTH_FIELD_COUNT = STYLE_LENGTH_FIELDS.size();
 constexpr size_t STYLE_WIRE_BYTES = 5 + STYLE_LENGTH_FIELD_COUNT * (sizeof(decltype(CssLength::value)) + 1) + 6 + 13 +
-                                    sizeof(uint32_t) + sizeof(uint32_t);
+                                    sizeof(uint32_t) + sizeof(uint32_t) + 1;
 constexpr uint8_t MAX_INITIAL_LETTER = 6;
 
 void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
@@ -546,6 +566,8 @@ void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
   memcpy(out + offset, &definedBits, sizeof(definedBits));
   offset += sizeof(definedBits);
   memcpy(out + offset, &style.fontFamily, sizeof(style.fontFamily));
+  offset += sizeof(style.fontFamily);
+  out[offset++] = static_cast<uint8_t>(style.fontGeneric);
 }
 
 bool decodeStyleWire(const uint8_t (&in)[STYLE_WIRE_BYTES], CssStyle& style) {
@@ -655,6 +677,10 @@ bool decodeStyleWire(const uint8_t (&in)[STYLE_WIRE_BYTES], CssStyle& style) {
   style.defined.whiteSpace = (definedBits & 1u << 30) != 0;
   style.defined.fontFamily = (definedBits & 1u << 31) != 0;
   memcpy(&style.fontFamily, in + offset, sizeof(style.fontFamily));
+  offset += sizeof(style.fontFamily);
+  const uint8_t fontGeneric = in[offset++];
+  if (fontGeneric >= CSS_GENERIC_FAMILY_COUNT) return false;
+  style.fontGeneric = static_cast<CssGenericFamily>(fontGeneric);
   return true;
 }
 
@@ -1105,8 +1131,7 @@ void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style
       style.defined.fontSize = 1;
     }
   } else if (iequalsAscii(name, "font-family")) {
-    style.fontFamily = fontFamilyFromList(value, faces);
-    style.defined.fontFamily = 1;
+    parseFontFamilyList(value, faces, style);
   } else if (iequalsAscii(name, "font-variant") || iequalsAscii(name, "font-variant-caps")) {
     bool smallCaps = false;
     forEachDelimitedToken(value, isAsciiWhitespace, [&](const std::string_view token) {
@@ -1485,9 +1510,9 @@ CssParser::ParseResult CssParser::loadFromStream(HalFile& source, const std::str
 }
 
 uint32_t CssParser::hashFontFamily(const std::string_view name) {
-  // 0 and FONT_FAMILY_INHERIT are reserved for the reader font and `inherit`.
+  // 0, the generic family ids and FONT_FAMILY_INHERIT (0xFFFFFFF0 and up) are reserved.
   const uint32_t hash = hashIgnoringAsciiCase(name);
-  return hash == 0 || hash == CssStyle::FONT_FAMILY_INHERIT ? 1 : hash;
+  return hash == 0 || hash >= 0xFFFFFFF0u ? 1 : hash;
 }
 
 void CssParser::parseFontFace(const std::string_view declBlock, const std::string_view baseDir) {

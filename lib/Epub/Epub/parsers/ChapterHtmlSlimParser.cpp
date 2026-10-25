@@ -123,7 +123,7 @@ class BodyFontProbe {
     uint32_t bytes = 0;
   };
   const CssParser& css;
-  const std::vector<uint32_t>* embedded;  // null: any named family counts
+  const ChapterHtmlSlimParser& parser;
   CssStyle resolvedStyle;
   std::array<CssAncestor, MAX_DEPTH> ancestors{};
   std::array<Frame, MAX_DEPTH> frames{};
@@ -151,10 +151,10 @@ class BodyFontProbe {
     if (!inlineStyle.empty()) style.applyOver(CssParser::parseInlineStyle(inlineStyle));
     auto& frame = self.frames[index];
     frame = index == 0 ? Frame{} : self.frames[index - 1];
-    if (style.setsFontFamily()) frame.family = style.fontFamily;
+    if (style.setsFontFamily()) frame.family = self.parser.chooseFamily(style.fontFamily, style.fontGeneric);
     if (style.hasTextAlign()) frame.alignment = style.textAlign;
     if (strcmp(name, "html") == 0 || strcmp(name, "body") == 0) {
-      if (style.setsFontFamily()) self.rootFamily = self.usable(style.fontFamily);
+      if (style.setsFontFamily()) self.rootFamily = self.usable(frame.family);
     }
     if (strcmp(name, "body") == 0) frame.inBody = true;
     frame.ignored = frame.ignored || hidden || style.display == CssDisplay::None ||
@@ -199,12 +199,13 @@ class BodyFontProbe {
   }
 
  public:
-  BodyFontProbe(const CssParser& css, const std::vector<uint32_t>* embedded) : css(css), embedded(embedded) {}
+  BodyFontProbe(const CssParser& css, const ChapterHtmlSlimParser& parser) : css(css), parser(parser) {}
 
-  // A family the book does not embed draws in the reader font, so it counts as the reader font.
+  // A family that is neither embedded nor a mapped generic draws in the reader font, so it
+  // counts as the reader font.
   uint32_t usable(const uint32_t family) const {
-    if (!embedded || family == 0) return family;
-    return std::find(embedded->begin(), embedded->end(), family) != embedded->end() ? family : 0;
+    if (family == 0 || family >= genericFamilyId(CssGenericFamily::Serif)) return family;
+    return parser.isEmbeddedFamily(family) ? family : 0;
   }
 
   void attach(XML_Parser parser) {
@@ -315,6 +316,7 @@ void ChapterHtmlSlimParser::applyInlinePresentationToEntry(StyleStackEntry& entr
   if (css.setsFontFamily()) {
     entry.hasFontFamily = true;
     entry.fontFamily = css.fontFamily;
+    entry.fontGeneric = css.fontGeneric;
   }
 }
 
@@ -416,8 +418,8 @@ void ChapterHtmlSlimParser::updateEffectiveInlineStyle() {
   // Apply inline style stack in order
   for (const auto& entry : inlineStyleStack) {
     if (entry.hasFontFamily) {
-      fontFamily = entry.fontFamily;
-      if (entry.blockLevel) blockFontFamily = entry.fontFamily;
+      fontFamily = chooseFamily(entry.fontFamily, entry.fontGeneric);
+      if (entry.blockLevel) blockFontFamily = fontFamily;
     }
     if (entry.hasBold) {
       effectiveBold = entry.bold;
@@ -620,6 +622,7 @@ void ChapterHtmlSlimParser::armFirstLetterDropCap(const char* tagName, const std
   dropCap.bold = firstLetter.hasFontWeight() && firstLetter.fontWeight == CssFontWeight::Bold;
   dropCap.hasFamily = firstLetter.setsFontFamily();
   dropCap.family = firstLetter.fontFamily;
+  dropCap.generic = firstLetter.fontGeneric;
 }
 
 namespace {
@@ -696,8 +699,8 @@ void ChapterHtmlSlimParser::layoutDropCapLines(
   char text[MAX_DROP_CAP_BYTES + 1];
   memcpy(text, dropCap.text, sizeof(text));
   const EpdFontFamily::Style capStyle = dropCap.bold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
-  const uint32_t capFamily =
-      dropCap.hasFamily ? publisherFamily(dropCap.family) : currentTextBlock->getBlockStyle().fontFamily;
+  const uint32_t capFamily = dropCap.hasFamily ? publisherFamily(chooseFamily(dropCap.family, dropCap.generic))
+                                               : currentTextBlock->getBlockStyle().fontFamily;
   dropCap = DropCapState{};
 
   // Enlarging the family's largest built-in size keeps outlines smoothest.
@@ -2366,6 +2369,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
             self->effectiveBold || (cssStyle.hasFontWeight() && cssStyle.fontWeight == CssFontWeight::Bold);
         self->dropCap.hasFamily = cssStyle.setsFontFamily();
         self->dropCap.family = cssStyle.fontFamily;
+        self->dropCap.generic = cssStyle.fontGeneric;
       }
     }
     // Handle span and other inline elements for CSS styling.
@@ -2375,7 +2379,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     const bool sized = cssStyle.hasFontSize() || tagScale > 0.0f;
     if (!self->bodyFontDetected && cssStyle.setsFontFamily() &&
         (strcmp(name, "html") == 0 || strcmp(name, "body") == 0)) {
-      self->bodyFontFamily = cssStyle.fontFamily;
+      self->bodyFontFamily = self->chooseFamily(cssStyle.fontFamily, cssStyle.fontGeneric);
     }
     if (sized || cssStyle.hasFontWeight() || cssStyle.hasFontStyle() || cssStyle.hasTextDecoration() ||
         cssStyle.hasSmallCaps() || cssStyle.defined.whiteSpace || cssStyle.hasDirection() ||
@@ -2950,7 +2954,7 @@ ChapterHtmlSlimParser::~ChapterHtmlSlimParser() { abortParse(); }
 
 bool ChapterHtmlSlimParser::detectBodyFont() {
   // The bounded ancestor/usage tables exceed the task's small stack budget.
-  auto probe = makeUniqueNoThrow<BodyFontProbe>(*cssParser, embeddedFamiliesKnown ? &embeddedFamilies : nullptr);
+  auto probe = makeUniqueNoThrow<BodyFontProbe>(*cssParser, *this);
   if (!probe) {
     LOG_ERR("EHP", "OOM: body font probe");
     return false;
@@ -3041,7 +3045,7 @@ bool ChapterHtmlSlimParser::beginParse() {
     popupFn();
   }
 
-  const bool embedsFonts = !embeddedFamiliesKnown || !embeddedFamilies.empty();
+  const bool embedsFonts = !embeddedFamiliesKnown || !embeddedFamilies.empty() || genericFontsMask != 0;
   if (publisherFonts == PublisherFonts::Accents && embeddedStyle && cssParser && embedsFonts && !detectBodyFont()) {
     abortParse();
     return false;
@@ -3190,6 +3194,19 @@ void ChapterHtmlSlimParser::applyBlockFontScale(BlockStyle& blockStyle, const Cs
 int ChapterHtmlSlimParser::fontIdForScale(const float scale) const {
   const int variant = renderer.resolveFontVariant(fontId, scale);
   return variant != 0 ? variant : fontId;
+}
+
+bool ChapterHtmlSlimParser::isEmbeddedFamily(const uint32_t family) const {
+  return !embeddedFamiliesKnown ||
+         std::find(embeddedFamilies.begin(), embeddedFamilies.end(), family) != embeddedFamilies.end();
+}
+
+uint32_t ChapterHtmlSlimParser::chooseFamily(const uint32_t named, const CssGenericFamily generic) const {
+  if (named != 0 && isEmbeddedFamily(named)) return named;
+  if (generic != CssGenericFamily::None && (genericFontsMask & (1u << static_cast<uint8_t>(generic))) != 0) {
+    return genericFamilyId(generic);
+  }
+  return named;
 }
 
 uint32_t ChapterHtmlSlimParser::publisherFamily(const uint32_t family) const {

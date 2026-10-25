@@ -93,7 +93,9 @@ if (parsedSize != fileSize) {
 ### Version 69
 
 The header gains a `publisherFonts` byte after `wordSpacingPercent` (0 off, 1 ignore
-body font, 2 all). On PSRAM boards, words and blocks whose CSS `font-family` names an
+body font, 2 all), then a u32 signature of the installed fonts mapped to the CSS
+generic families (0 when none), so changing the mapping rebuilds sections. On PSRAM
+boards, words and blocks whose CSS `font-family` names an
 `@font-face` font embedded in the book are laid out in that font; their font ids
 come from the family and point size, so cached pages reload them by id.
 
@@ -103,7 +105,10 @@ infers that family before layout, so paragraph-defined body fonts use the reader
 font from the first page.
 
 CSS cache version 20 uses defined-property bit 31 for `font-family` and appends the
-family's 32-bit hash to each style. `css_fonts.cache` lists the book's `@font-face`
+family's 32-bit hash and generic family (u8: 0 none, 1 serif, 2 sans-serif,
+3 monospace, 4 cursive) to each style. Hashes from 0xFFFFFFF0 up are reserved:
+0xFFFFFFF1 to 0xFFFFFFF4 stand for a mapped generic family and 0xFFFFFFFF for
+`inherit`/`unset`. `css_fonts.cache` lists the book's `@font-face`
 rules: a version byte (the CSS cache version), a face count, then per face the
 family hash (u32), flags (bit 0 bold, bit 1 italic), and a length-prefixed (u8)
 source path inside the EPUB.

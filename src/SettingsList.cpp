@@ -112,6 +112,15 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                          {StrId::STR_STATE_OFF, StrId::STR_PUBLISHER_FONTS_ACCENTS, StrId::STR_PUBLISHER_FONTS_ALL},
                          "publisherFonts", StrId::STR_CAT_READER)
            .withTextSettings());
+  // Placeholders: the options are the installed vector fonts, so UI callers replace these
+  // with buildGenericFontSetting(). CrossPointSettings saves the names itself.
+  constexpr StrId GENERIC_FONT_NAMES[] = {StrId::STR_SERIF_FONT, StrId::STR_SANS_SERIF_FONT, StrId::STR_MONOSPACE_FONT,
+                                          StrId::STR_CURSIVE_FONT};
+  for (int i = 0; i < CrossPointSettings::GENERIC_FONT_COUNT; ++i) {
+    emit(SettingInfo::Enum(GENERIC_FONT_NAMES[i], nullptr, {}, CrossPointSettings::GENERIC_FONT_KEYS[i],
+                           StrId::STR_CAT_READER)
+             .withTextSettings());
+  }
 #endif
   emit(SettingInfo::Toggle(StrId::STR_FOCUS_READING, &CrossPointSettings::focusReadingEnabled, "focusReadingEnabled",
                            StrId::STR_CAT_READER)

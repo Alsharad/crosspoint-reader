@@ -29,6 +29,10 @@ struct ReaderRenderSpec {
   uint8_t imageRendering = 0;
   bool focusReadingEnabled = false;
   PublisherFonts publisherFonts = PublisherFonts::Off;
+  // Generic families (serif, sans-serif, monospace, cursive) mapped to installed fonts: one
+  // bit per CssGenericFamily, and a signature of the chosen fonts for cache validation.
+  uint8_t genericFonts = 0;
+  uint32_t genericFontsSignature = 0;
 };
 
 // Stable signature for clipping anchors. Page-local word ordinals are valid
@@ -51,5 +55,7 @@ inline uint32_t readerRenderSpecSignature(const ReaderRenderSpec& spec) {
   mix(spec.embeddedStyle);
   mix(spec.imageRendering);
   mix(spec.focusReadingEnabled);
+  mix(static_cast<uint8_t>(spec.publisherFonts));
+  mix(spec.genericFontsSignature);
   return signature == 0 ? 1 : signature;
 }
