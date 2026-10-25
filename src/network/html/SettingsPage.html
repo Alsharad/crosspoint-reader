@@ -192,6 +192,49 @@
         width: unset;
       }
     }
+    /* Reader status bar editor (ported from CrossInk, design by Julia Nguyen, MIT) */
+    .status-bar-editor {
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      margin: 14px 0;
+    }
+.status-bar-editor h3 {
+      margin: 0 0 8px;
+      color: var(--title-color);
+    }
+.status-bar-preview {
+      margin-top: 12px;
+      padding: 8px;
+      background: white;
+      color: black;
+      border: 1px solid var(--border-color);
+      font-size: 12px;
+    }
+.status-bar-preview-items {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+.status-bar-preview-items span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+.status-bar-preview-items span:nth-child(2) { text-align: center; }
+.status-bar-preview-items span:nth-child(3) { text-align: right; }
+.status-bar-preview-progress {
+      height: 3px;
+      margin: 3px 0;
+      background: #ddd;
+    }
+.status-bar-preview-progress span {
+      display: block;
+      width: 64%;
+      height: 100%;
+      background: black;
+    }
   </style>
   <link rel="stylesheet" href="/assets/web.css" />
   <link rel="icon" type="image/svg+xml" href="/assets/crosspoint-icon.svg" />
@@ -211,6 +254,7 @@
     <button class="save-btn" id="saveBtn" onclick="saveSettings()">Save Settings</button>
   </div>
 
+  <div id="status-bars-container"></div>
   <div id="wifi-container"></div>
   <div id="opds-container"></div>
   <div id="plugin-container"></div>
@@ -771,6 +815,120 @@
     }
   }
 
+
+  // --- Reader status bars (ported from CrossInk, design by Julia Nguyen, MIT) ---
+  // Top and bottom bars with seven slots each, edited through /api/status-bars.
+  let statusBars = null;
+
+  function statusBarSelect(id, choices, value) {
+    return '<select id="' + id + '" onchange="statusBarChanged()">' +
+      choices.map(function(choice) {
+        return '<option value="' + choice.value + '"' + (choice.value === value ? ' selected' : '') +
+          (choice.disabled ? ' disabled' : '') + '>' + escapeHtml(String(choice.label)) + '</option>';
+      }).join('') + '</select>';
+  }
+
+  function statusBarRow(label, control) {
+    return '<div class="setting-row"><span class="setting-name">' + escapeHtml(label) +
+      '</span><span class="setting-control">' + control + '</span></div>';
+  }
+
+  function renderStatusBar(position) {
+    const bar = statusBars[position];
+    const labels = statusBars.labels;
+    const itemOptions = statusBars.options.map(function(option) {
+      return { value: option.value, label: option.label,
+        disabled: (option.value === 1 || option.value === 10) && !statusBars.clockAvailable };
+    });
+    const slotNames = [labels.left + ' 1', labels.left + ' 2', labels.left + ' 3', labels.center,
+      labels.right + ' 1', labels.right + ' 2', labels.right + ' 3'];
+    let html = '<div class="status-bar-editor"><h3>' + escapeHtml(labels[position]) + '</h3>';
+    for (let i = 0; i < bar.slots.length; i++) {
+      html += statusBarRow(slotNames[i], statusBarSelect('bar-' + position + '-slot-' + i, itemOptions, bar.slots[i]));
+    }
+    for (const field of [
+      ['percentageFormat', labels.percentageFormat, statusBars.percentageFormats],
+      ['progressBar', labels.progressBar, statusBars.progressModes],
+      ['thickness', labels.thickness, statusBars.thicknesses]
+    ]) {
+      html += statusBarRow(field[1], statusBarSelect('bar-' + position + '-' + field[0],
+        field[2].map(function(label, index) { return { value: index, label: label }; }), bar[field[0]]));
+    }
+    html += '<div class="status-bar-preview" id="bar-' + position + '-preview"></div></div>';
+    return html;
+  }
+
+  function readStatusBarForm(position) {
+    const bar = statusBars[position];
+    return {
+      slots: bar.slots.map(function(_, index) {
+        return Number(document.getElementById('bar-' + position + '-slot-' + index).value);
+      }),
+      percentageFormat: Number(document.getElementById('bar-' + position + '-percentageFormat').value),
+      progressBar: Number(document.getElementById('bar-' + position + '-progressBar').value),
+      thickness: Number(document.getElementById('bar-' + position + '-thickness').value)
+    };
+  }
+
+  function updateStatusBarPreview(position) {
+    const bar = readStatusBarForm(position);
+    const labels = statusBars.labels;
+    // Indexed by item value; 3, 4 and 6 are CrossInk-only items CrossPoint does not offer.
+    const examples = ['', '10:30', '85%', '', '', '8/32', '', (64.12).toFixed(bar.percentageFormat) + '%',
+      labels.exampleBook, labels.exampleChapter, '25 Oct'];
+    const slot = function(index) { return escapeHtml(examples[bar.slots[index]] || ''); };
+    const right = [4, 5, 6].map(slot).filter(Boolean).join(' &nbsp; ');
+    const progressValue = bar.progressBar === 0 ? 64 : 35;
+    const progress = bar.progressBar === 2 ? '' : '<div class="status-bar-preview-progress" style="height:' +
+      ((bar.thickness + 1) * 2) + 'px"><span style="width:' + progressValue + '%"></span></div>';
+    document.getElementById('bar-' + position + '-preview').innerHTML =
+      (position === 'top' ? progress : '') + '<div class="status-bar-preview-items"><span>' +
+      [slot(0), slot(1), slot(2)].filter(Boolean).join(' &nbsp; ') + '</span><span>' + slot(3) +
+      '</span><span>' + right + '</span></div>' + (position === 'bottom' ? progress : '');
+  }
+
+  function statusBarChanged() {
+    document.getElementById('statusBarsSaveBtn').disabled = false;
+    updateStatusBarPreview('top');
+    updateStatusBarPreview('bottom');
+  }
+
+  async function loadStatusBars() {
+    const container = document.getElementById('status-bars-container');
+    try {
+      const response = await fetch('/api/status-bars');
+      if (!response.ok) throw new Error('Failed to load status bars');
+      statusBars = await response.json();
+      container.innerHTML = '<div class="card"><h2>' + escapeHtml(statusBars.labels.title) + '</h2>' +
+        renderStatusBar('top') + renderStatusBar('bottom') +
+        '<div class="save-container"><button class="save-btn" id="statusBarsSaveBtn" ' +
+        'onclick="saveStatusBars()" disabled>Save Status Bars</button></div></div>';
+      updateStatusBarPreview('top');
+      updateStatusBarPreview('bottom');
+    } catch (error) {
+      console.error(error);
+      container.innerHTML = '<div class="card"><p>Failed to load status bars</p></div>';
+    }
+  }
+
+  async function saveStatusBars() {
+    const btn = document.getElementById('statusBarsSaveBtn');
+    btn.disabled = true;
+    try {
+      const response = await fetch('/api/status-bars', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ top: readStatusBarForm('top'), bottom: readStatusBarForm('bottom') })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      showWebToast('Status bars saved.', false);
+      await loadStatusBars();
+    } catch (error) {
+      btn.disabled = false;
+      showWebToast('Error: ' + error.message, true);
+    }
+  }
+
 <!--#include file="shared/PluginHost.js.inc" -->
 
   // Sequential, not concurrent: the device's web server handles one client
@@ -778,6 +936,7 @@
   // stall long enough inside a single response to trip the firmware watchdog.
   (async () => {
     await loadSettings();
+    await loadStatusBars();
     await loadWifiNetworks();
     await loadOpdsServers();
     await loadPlugins('settings');

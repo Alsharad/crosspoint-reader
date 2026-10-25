@@ -322,29 +322,38 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
         KOREADER_STORE.saveToFile();
       },
       "koSyncClippings", StrId::STR_KOREADER_SYNC));
-  // --- Status Bar Settings (web-only, uses StatusBarSettingsActivity) ---
+  // --- Status Bar Settings: the single-bar fields only seed the bottom reader bar on first load
+  // (see CrossPointSettings::fromJson) and are hidden from the web; the bars are edited in
+  // StatusBarSettingsActivity and /api/status-bars. ---
   emit(SettingInfo::Toggle(StrId::STR_CHAPTER_PAGE_COUNT, &CrossPointSettings::statusBarChapterPageCount,
-                           "statusBarChapterPageCount", StrId::STR_CUSTOMISE_STATUS_BAR));
+                           "statusBarChapterPageCount", StrId::STR_CUSTOMISE_STATUS_BAR)
+           .withWebHidden());
   emit(SettingInfo::Toggle(StrId::STR_BOOK_PROGRESS_PERCENTAGE, &CrossPointSettings::statusBarBookProgressPercentage,
-                           "statusBarBookProgressPercentage", StrId::STR_CUSTOMISE_STATUS_BAR));
+                           "statusBarBookProgressPercentage", StrId::STR_CUSTOMISE_STATUS_BAR)
+           .withWebHidden());
   emit(SettingInfo::Enum(StrId::STR_PROGRESS_BAR, &CrossPointSettings::statusBarProgressBar,
                          {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE}, "statusBarProgressBar",
-                         StrId::STR_CUSTOMISE_STATUS_BAR));
+                         StrId::STR_CUSTOMISE_STATUS_BAR)
+           .withWebHidden());
   emit(SettingInfo::Enum(StrId::STR_PROGRESS_BAR_THICKNESS, &CrossPointSettings::statusBarProgressBarThickness,
                          {StrId::STR_PROGRESS_BAR_THIN, StrId::STR_PROGRESS_BAR_MEDIUM, StrId::STR_PROGRESS_BAR_THICK},
-                         "statusBarProgressBarThickness", StrId::STR_CUSTOMISE_STATUS_BAR));
+                         "statusBarProgressBarThickness", StrId::STR_CUSTOMISE_STATUS_BAR)
+           .withWebHidden());
   emit(SettingInfo::Enum(StrId::STR_TITLE, &CrossPointSettings::statusBarTitle,
                          {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE}, "statusBarTitle",
-                         StrId::STR_CUSTOMISE_STATUS_BAR));
+                         StrId::STR_CUSTOMISE_STATUS_BAR)
+           .withWebHidden());
   emit(SettingInfo::Toggle(StrId::STR_BATTERY, &CrossPointSettings::statusBarBattery, "statusBarBattery",
-                           StrId::STR_CUSTOMISE_STATUS_BAR));
+                           StrId::STR_CUSTOMISE_STATUS_BAR)
+           .withWebHidden());
   emit(SettingInfo::Enum(StrId::STR_XTC_STATUS_BAR, &CrossPointSettings::xtcStatusBarMode,
                          {StrId::STR_HIDE, StrId::STR_BOTTOM, StrId::STR_TOP}, "xtcStatusBarMode",
                          StrId::STR_CUSTOMISE_STATUS_BAR));
   // Clock entries (persistence + web settings; the device UI is
   // ClockSettingsActivity under System settings).
   emit(SettingInfo::StaticEnum(StrId::STR_CLOCK, &CrossPointSettings::statusBarClock, STATUS_BAR_CLOCK_VALUES,
-                               "statusBarClock", StrId::STR_CUSTOMISE_STATUS_BAR));
+                               "statusBarClock", StrId::STR_CUSTOMISE_STATUS_BAR)
+           .withWebHidden());
   // LEGACY: retired quarter-hour UTC offset (biased by 48). Persisted so
   // timezones::activeIndex() can migrate it into clockTimezone.
   emit(SettingInfo::Value(StrId::STR_CLOCK, &CrossPointSettings::clockUtcOffsetQ, {0, 104, 1}, "clockUtcOffsetQ",

@@ -1,6 +1,7 @@
 #include "CrossPointSettings.h"
 
 #include <BlePageTurnerJson.h>
+#include <HalClock.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <ObfuscationUtils.h>
@@ -17,6 +18,7 @@
 #include "fontIds.h"
 #include "util/ParagraphIndentMigration.h"
 #include "util/PluginLocations.h"
+#include "util/ReaderStatusBarJson.h"
 
 namespace {
 
@@ -120,6 +122,11 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   }
 
   bleturner::writeJson(ble, doc);
+
+  JsonObject bars = doc["readerStatusBars"].to<JsonObject>();
+  bars["version"] = 1;
+  writeReaderStatusBarJson(bars["top"].to<JsonObject>(), topReaderStatusBar);
+  writeReaderStatusBarJson(bars["bottom"].to<JsonObject>(), bottomReaderStatusBar);
 }
 
 bool CrossPointSettings::fromJson(JsonVariantConst doc) {
@@ -295,6 +302,22 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     needsResave = true;
   }
 
+  // Before version 1 there was one bar; its settings become the bottom bar's slots.
+  const JsonVariantConst bars = doc["readerStatusBars"];
+  if (bars["version"] != 1) {
+    bottomReaderStatusBar = migrateBottomStatusBar(
+        {statusBarChapterPageCount != 0, statusBarBookProgressPercentage != 0, statusBarTitle, statusBarBattery != 0,
+         statusBarClock, statusBarProgressBar, statusBarProgressBarThickness});
+    needsResave = true;
+  } else {
+    needsResave |=
+        repairReaderStatusBarJson(bars["top"], topReaderStatusBar, true, READER_STATUS_BAR_PERCENT_FORMAT_COUNT,
+                                  STATUS_BAR_PROGRESS_BAR_COUNT, STATUS_BAR_PROGRESS_BAR_THICKNESS_COUNT);
+    needsResave |=
+        repairReaderStatusBarJson(bars["bottom"], bottomReaderStatusBar, true, READER_STATUS_BAR_PERCENT_FORMAT_COUNT,
+                                  STATUS_BAR_PROGRESS_BAR_COUNT, STATUS_BAR_PROGRESS_BAR_THICKNESS_COUNT);
+  }
+
   if (needsResave) {
     LOG_DBG("CPS", "Resaving settings to update format");
     requestResave();
@@ -303,6 +326,20 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   LOG_DBG("CPS", "Settings loaded from file");
 
   return true;
+}
+
+bool CrossPointSettings::parseReaderStatusBars(JsonVariantConst json, ReaderStatusBarsPayload& config) {
+  return readReaderStatusBarsPayload(json, config, halClock.isAvailable(), READER_STATUS_BAR_PERCENT_FORMAT_COUNT,
+                                     STATUS_BAR_PROGRESS_BAR_COUNT, STATUS_BAR_PROGRESS_BAR_THICKNESS_COUNT);
+}
+
+void CrossPointSettings::setReaderStatusBar(const ReaderStatusBarPosition position,
+                                            const ReaderStatusBarConfig& config) {
+  if (position == ReaderStatusBarPosition::Top) {
+    topReaderStatusBar = config;
+  } else {
+    bottomReaderStatusBar = config;
+  }
 }
 
 CrossPointSettings::StatusBarSpec CrossPointSettings::statusBarSpec() const {

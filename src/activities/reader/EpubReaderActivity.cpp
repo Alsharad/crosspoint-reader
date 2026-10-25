@@ -496,7 +496,7 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
 
   int marginTop, marginRight, marginBottom, marginLeft;
   renderer.getOrientedViewableTRBL(&marginTop, &marginRight, &marginBottom, &marginLeft);
-  marginTop += SETTINGS.screenMargin;
+  marginTop += ReaderUtils::contentTopMargin();
   marginLeft += SETTINGS.screenMargin;
 
   std::string chapterTitle;
@@ -542,9 +542,9 @@ void EpubReaderActivity::startClipSelection(const int initialX, const int initia
       }
       int top, right, bottom, left;
       renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
-      auto lookup = makeUniqueNoThrow<DictionaryWordSelectActivity>(renderer, mappedInput, std::move(page),
-                                                                    left + SETTINGS.screenMargin,
-                                                                    top + SETTINGS.screenMargin, clipping.text);
+      auto lookup = makeUniqueNoThrow<DictionaryWordSelectActivity>(
+          renderer, mappedInput, std::move(page), left + SETTINGS.screenMargin, top + ReaderUtils::contentTopMargin(),
+          clipping.text);
       if (!lookup) {
         LOG_ERR("CLIP", "OOM: dictionary lookup activity");
         requestUpdate();
@@ -587,7 +587,7 @@ void EpubReaderActivity::openFootnoteSelect(const bool reopenMenuOnCancel) {
   int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
   renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
                                    &orientedMarginLeft);
-  orientedMarginTop += SETTINGS.screenMargin;
+  orientedMarginTop += ReaderUtils::contentTopMargin();
   orientedMarginLeft += SETTINGS.screenMargin;
   auto selector = makeUniqueNoThrow<EpubReaderFootnoteSelectActivity>(renderer, mappedInput, std::move(page),
                                                                       orientedMarginLeft, orientedMarginTop);
@@ -1408,8 +1408,8 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
   pageTurnDuration = (1UL * 60 * 1000) / PAGE_TURN_RATES[selectedPageTurnOption];
   automaticPageTurnActive = true;
 
-  const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
-  if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {
+  const uint8_t statusBarHeight = UITheme::getReaderStatusBarHeight(ReaderStatusBarPosition::Bottom);
+  if (statusBarHeight == 0 || statusBarHeight == UITheme::getReaderProgressBarHeight(ReaderStatusBarPosition::Bottom)) {
     RenderLock lock;
     if (section) {
       rememberCurrentContentOffset();
@@ -1634,14 +1634,14 @@ void EpubReaderActivity::renderBook() {
   int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
   renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
                                    &orientedMarginLeft);
-  orientedMarginTop += SETTINGS.screenMargin;
+  orientedMarginTop += ReaderUtils::contentTopMargin();
   orientedMarginLeft += SETTINGS.screenMargin;
   orientedMarginRight += SETTINGS.screenMargin;
 
-  const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
+  const uint8_t statusBarHeight = UITheme::getReaderStatusBarHeight(ReaderStatusBarPosition::Bottom);
 
-  if (automaticPageTurnActive &&
-      (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
+  if (automaticPageTurnActive && (statusBarHeight == 0 || statusBarHeight == UITheme::getReaderProgressBarHeight(
+                                                                                 ReaderStatusBarPosition::Bottom))) {
     orientedMarginBottom +=
         std::max(SETTINGS.screenMargin,
                  static_cast<uint8_t>(statusBarHeight + UITheme::getInstance().getMetrics().statusBarVerticalMargin));
@@ -2317,8 +2317,8 @@ int EpubReaderActivity::clippingAtPoint(const Page& page, const int x, const int
                                                  block->getBlockStyle().characterSpacing);
       if (width <= 0) continue;
       const uint16_t index = wordIndex++;
-      const Rect rect =
-          clippingWordRect(renderer, fontId, line, i, top + SETTINGS.screenMargin, left + SETTINGS.screenMargin, width);
+      const Rect rect = clippingWordRect(renderer, fontId, line, i, top + ReaderUtils::contentTopMargin(),
+                                         left + SETTINGS.screenMargin, width);
       if (x < rect.x || x >= rect.x + rect.width || y < rect.y || y >= rect.y + rect.height) continue;
       const auto range = block->wordSourceRange(i);
       for (size_t j = 0; j < CLIPPINGS.clippingCount(); ++j) {
@@ -2424,41 +2424,41 @@ void EpubReaderActivity::renderStatusBar() const {
   const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
   const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
 
-  std::string title;
-  int textYOffset = 0;
-  const auto sb = SETTINGS.statusBarSpec();
+  std::string chapterTitle = tr(STR_UNNAMED);
+  if (epub) {
+    const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
+    if (tocIndex != -1) chapterTitle = epub->getTocItem(tocIndex).title;
+  }
+  const std::string bookTitle = epub ? epub->getTitle() : "";
 
-  const auto note = linkNoteTitle.draw(sb.showsTitle(), bleturner::linkNote());
+  // Bluetooth and auto page turn notices take the bottom bar's center, as the title did.
+  std::string notice;
+  const bool bottomHasText = SETTINGS.readerStatusBar(ReaderStatusBarPosition::Bottom).hasTextItems(true);
+  const auto note = linkNoteTitle.draw(bottomHasText, bleturner::linkNote());
   if (note == bleturner::LinkNote::Connected) {
     const auto peer = bleturner::linked();
     char connected[64];
     snprintf(connected, sizeof(connected), tr(STR_BT_CONNECTED_TO), peer.name[0] != '\0' ? peer.name : peer.addr);
-    title = connected;
+    notice = connected;
   } else if (note == bleturner::LinkNote::LowMemory) {
-    title = tr(STR_BT_LOW_MEMORY);
+    notice = tr(STR_BT_LOW_MEMORY);
   } else if (note != bleturner::LinkNote::None) {
-    title = note == bleturner::LinkNote::Connecting ? tr(STR_BT_CONNECTING) : tr(STR_BT_FAILED);
+    notice = note == bleturner::LinkNote::Connecting ? tr(STR_BT_CONNECTING) : tr(STR_BT_FAILED);
   } else if (automaticPageTurnActive) {
-    title = tr(STR_AUTO_TURN_ENABLED) + std::to_string(60 * 1000 / pageTurnDuration);
-    const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
-    if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {
-      textYOffset += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
-    }
-  } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
-    title = tr(STR_UNNAMED);
-    if (epub) {
-      const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
-      if (tocIndex != -1) {
-        const auto tocItem = epub->getTocItem(tocIndex);
-        title = tocItem.title;
-      }
-    }
-  } else if (sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
-    title = epub ? epub->getTitle() : "";
+    notice = tr(STR_AUTO_TURN_ENABLED) + std::to_string(60 * 1000 / pageTurnDuration);
   }
 
-  GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true, currentPageBookmarked,
-                    section ? section->isBuilding() : false);
+  ReaderStatusBarContent content;
+  content.bookProgress = bookProgress;
+  content.chapterPage = currentPage;
+  content.chapterPageCount = static_cast<int>(pageCount);
+  content.bookTitle = bookTitle.c_str();
+  content.chapterTitle = chapterTitle.c_str();
+  content.centerNotice = notice.empty() ? nullptr : notice.c_str();
+  content.bookmarked = currentPageBookmarked;
+  content.pageCountEstimated = section ? section->isBuilding() : false;
+  GUI.drawReaderStatusBar(renderer, ReaderStatusBarPosition::Top, content);
+  GUI.drawReaderStatusBar(renderer, ReaderStatusBarPosition::Bottom, content);
 }
 
 // ---------------------------------------------------------------------------

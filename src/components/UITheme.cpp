@@ -172,6 +172,25 @@ int UITheme::getStatusBarHeight() {
          (sb.showsProgressBar() ? (sb.progressBarHeightPx + metrics.progressBarMarginTop) : 0);
 }
 
+int UITheme::getReaderStatusBarHeight(const ReaderStatusBarPosition position) {
+  const ThemeMetrics& metrics = UITheme::getInstance().getMetrics();
+  const auto config = SETTINGS.readerStatusBar(position);
+  // Hardware-agnostic like getStatusBarHeight(): reserve the clock lane whether or not an RTC exists.
+  const bool hasText = config.hasTextItems(true);
+  const int progressSpace = config.progressBar != CrossPointSettings::HIDE_PROGRESS
+                                ? static_cast<int>((config.progressBarThickness + 1) * 2) + metrics.progressBarMarginTop
+                                : 0;
+  return readerStatusBarTotalHeight(position, hasText, progressSpace, metrics.statusBarVerticalMargin);
+}
+
+int UITheme::getReaderProgressBarHeight(const ReaderStatusBarPosition position) {
+  const ThemeMetrics& metrics = UITheme::getInstance().getMetrics();
+  const auto config = SETTINGS.readerStatusBar(position);
+  return config.progressBar != CrossPointSettings::HIDE_PROGRESS
+             ? static_cast<int>((config.progressBarThickness + 1) * 2) + metrics.progressBarMarginTop
+             : 0;
+}
+
 int UITheme::getProgressBarHeight() {
   const ThemeMetrics metrics = UITheme::getInstance().getMetrics();
   const auto sb = SETTINGS.statusBarSpec();

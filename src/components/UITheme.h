@@ -49,6 +49,9 @@ class UITheme {
   static std::string getCoverThumbPath(std::string coverBmpPath, int coverHeight);
   static UIIcon getFileIcon(const std::string& filename);
   static int getStatusBarHeight();
+  // Space a reader reserves for its top or bottom status bar.
+  static int getReaderStatusBarHeight(ReaderStatusBarPosition position);
+  static int getReaderProgressBarHeight(ReaderStatusBarPosition position);
   static int getProgressBarHeight();
 
  private:

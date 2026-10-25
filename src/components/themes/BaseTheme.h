@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "util/ReaderStatusBarConfig.h"
+
 class Bitmap;
 class GfxRenderer;
 struct RecentBook;
@@ -229,6 +231,21 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
                                  .capsuleRadius = 0};
 }
 
+// What a reader shows in its status bars this frame (CrossInk design, ported).
+struct ReaderStatusBarContent {
+  float bookProgress = 0;
+  int chapterPage = 0;
+  int chapterPageCount = 0;
+  const char* bookTitle = nullptr;
+  const char* chapterTitle = nullptr;
+  // Replaces the bottom bar's center item (auto page turn, Bluetooth notices).
+  const char* centerNotice = nullptr;
+  bool bookmarked = false;
+  bool pageCountEstimated = false;
+  // Settings preview: draw the bar with its top edge here instead of at the screen edge.
+  int previewOriginY = -1;
+};
+
 class BaseTheme {
  public:
   virtual ~BaseTheme() = default;
@@ -294,6 +311,8 @@ class BaseTheme {
                             std::string title, const int paddingBottom = 0, const int textYOffset = 0,
                             const bool fillMargin = true, const bool isPageBookmarked = false,
                             const bool pageCountEstimated = false);
+  static void drawReaderStatusBar(GfxRenderer& renderer, ReaderStatusBarPosition position,
+                                  const ReaderStatusBarContent& content);
   static void drawHelpText(const GfxRenderer& renderer, Rect rect, const char* label);
   virtual void drawTextField(const GfxRenderer& renderer, Rect rect, const int textWidth, bool cursorMode = false,
                              int contentStartX = 0, int contentWidth = 0) const;

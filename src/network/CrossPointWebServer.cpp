@@ -6,6 +6,7 @@
 #include <Crypto.h>
 #include <DeviceSecret.h>
 #include <FsHelpers.h>
+#include <HalClock.h>
 #include <HalGPIO.h>
 #include <HalMemory.h>
 #include <HalStorage.h>
@@ -55,6 +56,7 @@
 #include "util/FirmwareIdentity.h"
 #include "util/PluginHttp.h"
 #include "util/PluginLocations.h"
+#include "util/ReaderStatusBarJson.h"
 #include "util/TaskWatchdog.h"
 
 static void sendStaticContent(WebServer* server, const char* data, size_t len, const char* etag,
@@ -237,6 +239,8 @@ void CrossPointWebServer::begin() {
   server->on("/settings", HTTP_GET, [this] { handleSettingsPage(); });
   server->on("/api/settings", HTTP_GET, [this] { handleGetSettings(); });
   server->on("/api/settings", HTTP_POST, [this] { handlePostSettings(); });
+  server->on("/api/status-bars", HTTP_GET, [this] { handleGetStatusBars(); });
+  server->on("/api/status-bars", HTTP_POST, [this] { handlePostStatusBars(); });
 
   // Font management endpoints
   server->on("/fonts", HTTP_GET, [this] { handleFontsPage(); });
@@ -1449,6 +1453,84 @@ void CrossPointWebServer::handleGetSettings() const {
   server->sendContent("]");
   server->sendContent("");
   LOG_DBG("WEB", "Served settings API");
+}
+
+// Reader status bars for the settings page (CrossInk design, ported): both bars, the items a slot can
+// hold, and the labels the page shows.
+void CrossPointWebServer::handleGetStatusBars() const {
+  JsonDocument doc;
+  writeReaderStatusBarJson(doc["top"].to<JsonObject>(), SETTINGS.readerStatusBar(ReaderStatusBarPosition::Top));
+  writeReaderStatusBarJson(doc["bottom"].to<JsonObject>(), SETTINGS.readerStatusBar(ReaderStatusBarPosition::Bottom));
+  doc["clockAvailable"] = halClock.isAvailable();
+
+  JsonObject labels = doc["labels"].to<JsonObject>();
+  labels["title"] = tr(STR_STATUS_BARS);
+  labels["top"] = tr(STR_TOP_STATUS_BAR);
+  labels["bottom"] = tr(STR_BOTTOM_STATUS_BAR);
+  labels["left"] = tr(STR_STATUS_BAR_LEFT);
+  labels["center"] = tr(STR_CENTER);
+  labels["right"] = tr(STR_STATUS_BAR_RIGHT);
+  labels["percentageFormat"] = tr(STR_PERCENTAGE_FORMAT);
+  labels["progressBar"] = tr(STR_PROGRESS_BAR);
+  labels["thickness"] = tr(STR_PROGRESS_BAR_THICKNESS);
+  labels["preview"] = tr(STR_PREVIEW);
+  labels["exampleBook"] = tr(STR_EXAMPLE_BOOK);
+  labels["exampleChapter"] = tr(STR_EXAMPLE_CHAPTER);
+
+  JsonArray options = doc["options"].to<JsonArray>();
+  const auto addOption = [&options](ReaderStatusBarItem item, const std::string& label) {
+    JsonObject option = options.add<JsonObject>();
+    option["value"] = static_cast<uint8_t>(item);
+    option["label"] = label;
+  };
+  const auto combined = [](const char* first, const char* second) { return std::string(first) + " (" + second + ")"; };
+  addOption(ReaderStatusBarItem::Empty, tr(STR_STATUS_BAR_EMPTY));
+  addOption(ReaderStatusBarItem::Clock, tr(STR_STATUS_BAR_CLOCK));
+  addOption(ReaderStatusBarItem::Date, tr(STR_DATE));
+  addOption(ReaderStatusBarItem::Battery, tr(STR_BATTERY));
+  addOption(ReaderStatusBarItem::ChapterPageCount, tr(STR_CHAPTER_PAGE_COUNT));
+  addOption(ReaderStatusBarItem::BookProgressPercentage, tr(STR_BOOK_PROGRESS_PERCENTAGE));
+  addOption(ReaderStatusBarItem::TitleBook, combined(tr(STR_TITLE), tr(STR_BOOK)));
+  addOption(ReaderStatusBarItem::TitleChapter, combined(tr(STR_TITLE), tr(STR_CHAPTER)));
+
+  const auto addLabels = [&doc](const char* name, std::initializer_list<StrId> ids) {
+    JsonArray list = doc[name].to<JsonArray>();
+    for (const StrId id : ids) list.add(I18N.get(id));
+  };
+  addLabels("percentageFormats", {StrId::STR_PERCENTAGE_FORMAT_WHOLE, StrId::STR_PERCENTAGE_FORMAT_ONE_DECIMAL,
+                                  StrId::STR_PERCENTAGE_FORMAT_TWO_DECIMALS});
+  addLabels("progressModes", {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE});
+  addLabels("thicknesses",
+            {StrId::STR_PROGRESS_BAR_THIN, StrId::STR_PROGRESS_BAR_MEDIUM, StrId::STR_PROGRESS_BAR_THICK});
+
+  String payload;
+  serializeJson(doc, payload);
+  server->send(200, "application/json", payload);
+}
+
+void CrossPointWebServer::handlePostStatusBars() {
+  if (!server->hasArg("plain")) {
+    server->send(400, "text/plain", "Missing JSON body");
+    return;
+  }
+  JsonDocument doc;
+  if (deserializeJson(doc, server->arg("plain"))) {
+    server->send(400, "text/plain", "Invalid JSON");
+    return;
+  }
+  ReaderStatusBarsPayload bars;
+  if (!CrossPointSettings::parseReaderStatusBars(doc.as<JsonVariantConst>(), bars)) {
+    server->send(400, "text/plain", "Invalid status bar configuration");
+    return;
+  }
+  SETTINGS.setReaderStatusBar(ReaderStatusBarPosition::Top, bars.top);
+  SETTINGS.setReaderStatusBar(ReaderStatusBarPosition::Bottom, bars.bottom);
+  if (!SETTINGS.saveToFile()) {
+    LOG_ERR("WEB", "Failed to save status bar configuration");
+    server->send(500, "text/plain", "Failed to save status bars");
+    return;
+  }
+  server->send(200, "text/plain", "OK");
 }
 
 void CrossPointWebServer::handlePostSettings() {

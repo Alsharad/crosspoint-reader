@@ -6,14 +6,24 @@
 #include <HalTiltSensor.h>
 #include <Logging.h>
 
+#include <algorithm>
 #include <cctype>
 #include <string_view>
 
 #include "HapticFeedback.h"
 #include "MappedInputManager.h"
 #include "activities/ActivityManager.h"
+#include "components/UITheme.h"
 
 namespace ReaderUtils {
+
+// Space above the page text: the top status bar when it shows, else the screen margin
+// (CrossInk's rule). Every site that places page text must use it so layout and taps agree.
+inline int contentTopMargin() {
+  const int topBarHeight = UITheme::getReaderStatusBarHeight(ReaderStatusBarPosition::Top);
+  return topBarHeight > 0 ? std::max(static_cast<int>(SETTINGS.screenMargin), topBarHeight)
+                          : static_cast<int>(SETTINGS.screenMargin);
+}
 
 constexpr unsigned long GO_HOME_MS = 1000;
 constexpr unsigned long GO_BACK_OR_HOME_MS = GO_HOME_MS;

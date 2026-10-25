@@ -10,7 +10,9 @@
 #include <Logging.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
+#include <ctime>
 #include <string>
 
 #include "I18n.h"
@@ -957,6 +959,156 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
                       titleMarginLeftAdjusted + metrics.statusBarHorizontalMargin + orientedMarginLeft +
                           (availableTitleSpace - titleWidth) / 2,
                       textY, title.c_str());
+  }
+}
+
+// Seven placeable slots per bar: three left, one centered, three right.
+// Ported from CrossInk (github.com/uxjulia/CrossInk), design by Julia Nguyen, MIT.
+void BaseTheme::drawReaderStatusBar(GfxRenderer& renderer, const ReaderStatusBarPosition position,
+                                    const ReaderStatusBarContent& content) {
+  const ReaderStatusBarConfig config = SETTINGS.readerStatusBar(position);
+  const ThemeMetrics& metrics = UITheme::getInstance().getMetrics();
+  const bool top = position == ReaderStatusBarPosition::Top;
+  const bool clockAvailable = halClock.isAvailable();
+  const bool hasText = config.hasTextItems(clockAvailable) || (!top && content.centerNotice != nullptr);
+  const int progressHeight = config.progressBar != CrossPointSettings::HIDE_PROGRESS
+                                 ? static_cast<int>((config.progressBarThickness + 1) * 2)
+                                 : 0;
+  const int progressSpace = progressHeight > 0 ? progressHeight + metrics.progressBarMarginTop : 0;
+  const int textHeight = hasText ? metrics.statusBarVerticalMargin : 0;
+  const int totalHeight = readerStatusBarTotalHeight(position, hasText, progressSpace, metrics.statusBarVerticalMargin);
+  if (totalHeight <= 0) return;
+
+  int marginTop, marginRight, marginBottom, marginLeft;
+  renderer.getOrientedViewableTRBL(&marginTop, &marginRight, &marginBottom, &marginLeft);
+  const int screenWidth = renderer.getScreenWidth();
+  const int edgeY = content.previewOriginY >= 0
+                        ? content.previewOriginY
+                        : (top ? marginTop : renderer.getScreenHeight() - marginBottom - totalHeight);
+  const int textY = edgeY + (top ? progressSpace : 0) +
+                    (hasText ? (top ? ReaderStatusBarConfig::TOP_TEXT_INSET
+                                    : (textHeight - renderer.getLineHeight(SMALL_FONT_ID)) / 2)
+                             : 0);
+
+  if (progressHeight > 0) {
+    const float percent =
+        config.progressBar == CrossPointSettings::BOOK_PROGRESS
+            ? content.bookProgress
+            : (content.chapterPageCount > 0 ? 100.0f * content.chapterPage / content.chapterPageCount : 0.0f);
+    const int barWidth = std::max(0, screenWidth - marginLeft - marginRight);
+    const int filled = static_cast<int>(barWidth * std::clamp(percent, 0.0f, 100.0f) / 100.0f);
+    const int barY = top ? edgeY : edgeY + totalHeight - progressHeight;
+    renderer.fillRect(marginLeft, barY, filled, progressHeight, true);
+  }
+  if (!hasText) return;
+
+  // The side items sit in the corners: clear the panel's rounded corners too.
+  const int corner = BoardConfig::ACTIVE.cornerRadius;
+  const int leftEdge = metrics.statusBarHorizontalMargin + std::max(marginLeft, corner) + 1;
+  const int rightEdge = screenWidth - metrics.statusBarHorizontalMargin - std::max(marginRight, corner);
+  const int available = std::max(0, rightEdge - leftEdge);
+
+  int bookmarkReserve = 0;
+  if (!top && content.bookmarked) {
+    drawBookmarkStatusIcon(renderer, leftEdge, textY + 5);
+    bookmarkReserve = bookmarkStatusIconWidth + bookmarkStatusIconGap;
+  }
+
+  const bool batteryPercent = SETTINGS.statusBarSpec().showBatteryPercent;
+  const bool clock12h = SETTINGS.statusBarSpec().clock12h;
+  const auto itemText = [&](const ReaderStatusBarItem item, char* scratch, const size_t len) -> const char* {
+    switch (item) {
+      case ReaderStatusBarItem::Date: {
+        struct tm local;
+        return clockAvailable && halClock.localTime(local) && strftime(scratch, len, "%d %b", &local) > 0 ? scratch
+                                                                                                          : nullptr;
+      }
+      case ReaderStatusBarItem::Clock:
+        return clockAvailable && halClock.formatTime(scratch, len, clock12h) ? scratch : nullptr;
+      case ReaderStatusBarItem::ChapterPageCount:
+        if (content.chapterPageCount <= 0) return nullptr;
+        snprintf(scratch, len, "%s%d/%d", content.pageCountEstimated ? "~" : "", content.chapterPage,
+                 content.chapterPageCount);
+        return scratch;
+      case ReaderStatusBarItem::BookProgressPercentage:
+        snprintf(scratch, len, "%.*f%%", static_cast<int>(config.percentageFormat), content.bookProgress);
+        return scratch;
+      case ReaderStatusBarItem::TitleBook:
+        return content.bookTitle;
+      case ReaderStatusBarItem::TitleChapter:
+        return content.chapterTitle;
+      default:
+        return nullptr;
+    }
+  };
+  const auto batteryWidth = [&]() {
+    int width = metrics.batteryWidth;
+    if (batteryPercent) {
+      char percent[8];
+      snprintf(percent, sizeof(percent), "%u%%", static_cast<unsigned>(powerManager.getBatteryPercentage()));
+      width += batteryPercentSpacing + renderer.getTextWidth(SMALL_FONT_ID, percent);
+    }
+    return width;
+  };
+  const auto measureItem = [&](const ReaderStatusBarItem item, const int maxWidth) {
+    if (item == ReaderStatusBarItem::Battery) return batteryWidth();
+    char scratch[48];
+    const char* value = itemText(item, scratch, sizeof(scratch));
+    return value && value[0] ? std::min(maxWidth, renderer.getTextWidth(SMALL_FONT_ID, value)) : 0;
+  };
+  const auto drawText = [&](const char* value, const int x, const int allowedWidth, const bool alignRight) {
+    if (!value || !value[0] || allowedWidth <= 0) return;
+    std::string clipped;
+    int width = renderer.getTextWidth(SMALL_FONT_ID, value);
+    if (width > allowedWidth) {
+      clipped = renderer.truncatedText(SMALL_FONT_ID, value, allowedWidth);
+      value = clipped.c_str();
+      width = renderer.getTextWidth(SMALL_FONT_ID, value);
+    }
+    renderer.drawText(SMALL_FONT_ID, x + (alignRight ? allowedWidth - width : 0), textY, value);
+  };
+  const auto drawItem = [&](const ReaderStatusBarItem item, const int x, const int allowedWidth,
+                            const bool alignRight) {
+    if (item == ReaderStatusBarItem::Battery) {
+      const int width = batteryWidth();
+      if (allowedWidth < metrics.batteryWidth) return;
+      const bool showPercent = batteryPercent && allowedWidth >= width;
+      const int drawnWidth = showPercent ? width : metrics.batteryWidth;
+      const int batteryX = alignRight ? x + allowedWidth - drawnWidth : x;
+      GUI.drawBatteryLeft(renderer, Rect{batteryX, textY, metrics.batteryWidth, metrics.batteryHeight}, showPercent);
+      return;
+    }
+    char scratch[48];
+    drawText(itemText(item, scratch, sizeof(scratch)), x, allowedWidth, alignRight);
+  };
+
+  constexpr int itemGap = 8;
+  std::array<int, ReaderStatusBarConfig::SLOT_COUNT> widths{};
+  for (unsigned i = 0; i < ReaderStatusBarConfig::SLOT_COUNT; ++i) {
+    if (i != ReaderStatusBarConfig::CENTER) widths[i] = measureItem(config.slots[i], available);
+  }
+  fitReaderStatusBarSideWidths(widths, available, bookmarkReserve, itemGap);
+  const auto placement = layoutReaderStatusBarItems(leftEdge, rightEdge, widths, bookmarkReserve, itemGap);
+  for (unsigned i = ReaderStatusBarConfig::LEFT_FIRST; i <= ReaderStatusBarConfig::LEFT_THIRD; ++i) {
+    if (widths[i] > 0) drawItem(config.slots[i], placement.x[i], widths[i], false);
+  }
+  for (unsigned i = ReaderStatusBarConfig::RIGHT_FIRST; i <= ReaderStatusBarConfig::RIGHT_THIRD; ++i) {
+    if (widths[i] > 0) drawItem(config.slots[i], placement.x[i], widths[i], true);
+  }
+
+  const int centerWidth = placement.centerRight - placement.centerLeft;
+  if (centerWidth <= 0) return;
+  if (!top && content.centerNotice) {
+    const int width = std::min(centerWidth, renderer.getTextWidth(SMALL_FONT_ID, content.centerNotice));
+    drawText(content.centerNotice,
+             std::clamp((screenWidth - width) / 2, placement.centerLeft, placement.centerRight - width), width, false);
+    return;
+  }
+  const auto centerItem = config.slots[ReaderStatusBarConfig::CENTER];
+  const int width = measureItem(centerItem, centerWidth);
+  if (width > 0) {
+    const int centeredX = std::clamp((screenWidth - width) / 2, placement.centerLeft, placement.centerRight - width);
+    drawItem(centerItem, centeredX, width, false);
   }
 }
 

@@ -8,6 +8,7 @@
 #include <cstdint>
 
 #include "util/HomeButtonInput.h"
+#include "util/ReaderStatusBarConfig.h"
 
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
  private:
@@ -251,6 +252,22 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t xtcStatusBarMode = XTC_STATUS_BAR_HIDE;
   // Clock display in status bar (any board whose RTC probe succeeds)
   uint8_t statusBarClock = STATUS_BAR_CLOCK_HIDE;
+  // Placeable reader status bars (CrossInk design). The single-bar fields above stay for
+  // XTC books and are converted once into the bottom bar.
+  ReaderStatusBarConfig topReaderStatusBar{};
+  ReaderStatusBarConfig bottomReaderStatusBar = [] {
+    ReaderStatusBarConfig config;
+    config.slots = {ReaderStatusBarItem::Battery,
+                    ReaderStatusBarItem::Empty,
+                    ReaderStatusBarItem::Empty,
+                    ReaderStatusBarItem::TitleChapter,
+                    ReaderStatusBarItem::ChapterPageCount,
+                    ReaderStatusBarItem::BookProgressPercentage,
+                    ReaderStatusBarItem::Empty};
+    return config;
+  }();
+  // Decimal places shown for the book percentage: 0, 1 or 2.
+  static constexpr int READER_STATUS_BAR_PERCENT_FORMAT_COUNT = 3;
   // LEGACY, kept for migration only: quarter-hour UTC offset biased by 48
   // (48 = UTC+0). Superseded by clockTimezone; read once by
   // timezones::activeIndex() when clockTimezone is unset.
@@ -460,6 +477,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     }
   };
   StatusBarSpec statusBarSpec() const;
+  // Unlocked for the same reason as statusBarSpec(); see the note above.
+  ReaderStatusBarConfig readerStatusBar(ReaderStatusBarPosition position) const {
+    return position == ReaderStatusBarPosition::Top ? topReaderStatusBar : bottomReaderStatusBar;
+  }
+  void setReaderStatusBar(ReaderStatusBarPosition position, const ReaderStatusBarConfig& config);
+  static bool parseReaderStatusBars(JsonVariantConst json, ReaderStatusBarsPayload& config);
 
   // Resolved text-rendering configuration for the Epub layout engine. The
   // viewport is renderer/orientation-derived, so the caller supplies it —
