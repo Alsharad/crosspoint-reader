@@ -19,3 +19,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+The reader status bars (src/util/ReaderStatusBarConfig.h,
+src/util/ReaderStatusBarJson.h, src/activities/settings/StatusBarSettingsActivity.*
+and the status bar parts of the theme, settings and web pages) are ported from
+CrossInk (https://github.com/uxjulia/CrossInk) by Julia Nguyen, released under
+the MIT License above with this notice:
+
+Copyright (c) 2025 Dave Allie
+Copyright (c) 2025 CrossPoint Reader organization
