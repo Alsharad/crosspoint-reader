@@ -236,9 +236,9 @@ void forEachDelimitedToken(std::string_view s, Pred isDelimiter, F&& fn) {
 }
 
 constexpr std::string_view unquoteCss(std::string_view s) {
-  s = trimCssWhitespace(s);
+  s = trimAsciiWhitespace(s);
   if (s.size() >= 2 && (s.front() == '"' || s.front() == '\'') && s.back() == s.front()) {
-    s = trimCssWhitespace(s.substr(1, s.size() - 2));
+    s = trimAsciiWhitespace(s.substr(1, s.size() - 2));
   }
   return s;
 }
@@ -1469,8 +1469,8 @@ void CssParser::parseFontFace(const std::string_view declBlock, const std::strin
       [&](const std::string_view decl) {
         const size_t colon = decl.find(':');
         if (colon == std::string_view::npos) return;
-        const std::string_view name = trimCssWhitespace(decl.substr(0, colon));
-        const std::string_view value = trimCssWhitespace(decl.substr(colon + 1));
+        const std::string_view name = trimAsciiWhitespace(decl.substr(0, colon));
+        const std::string_view value = trimAsciiWhitespace(decl.substr(colon + 1));
         if (iequalsAscii(name, "font-family")) {
           const std::string_view family = unquoteCss(value);
           if (!family.empty()) face.family = hashFontFamily(family);

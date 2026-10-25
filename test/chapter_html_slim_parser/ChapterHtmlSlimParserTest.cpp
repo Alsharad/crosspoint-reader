@@ -1225,8 +1225,8 @@ TEST_F(ChapterBlockDecorationTest, EmbeddedFamiliesFollowPublisherFontsMode) {
   ASSERT_EQ(lines.size(), 2u);
   const auto& mixed = *static_cast<const PageLine*>(lines[0])->getBlock();
   EXPECT_EQ(mixed.getBlockStyle().fontId, 0);  // the body family stays in the reader font
-  EXPECT_EQ(mixed.wordFontId(0, NOTOSERIF_14_FONT_ID), NOTOSERIF_14_FONT_ID);
-  EXPECT_EQ(mixed.wordFontId(1, NOTOSERIF_14_FONT_ID), HAND_FONT);
+  EXPECT_EQ(mixed.wordFontId(0, NOTOSANS_14_FONT_ID), NOTOSANS_14_FONT_ID);
+  EXPECT_EQ(mixed.wordFontId(1, NOTOSANS_14_FONT_ID), HAND_FONT);
   EXPECT_EQ(static_cast<const PageLine*>(lines[1])->getBlock()->getBlockStyle().fontId, HAND_FONT);
 
   pages.clear();
@@ -1237,8 +1237,8 @@ TEST_F(ChapterBlockDecorationTest, EmbeddedFamiliesFollowPublisherFontsMode) {
   ASSERT_EQ(lines.size(), 2u);
   const auto& all = *static_cast<const PageLine*>(lines[0])->getBlock();
   EXPECT_EQ(all.getBlockStyle().fontId, BODY_FONT);
-  EXPECT_EQ(all.wordFontId(0, NOTOSERIF_14_FONT_ID), BODY_FONT);
-  EXPECT_EQ(all.wordFontId(1, NOTOSERIF_14_FONT_ID), HAND_FONT);
+  EXPECT_EQ(all.wordFontId(0, NOTOSANS_14_FONT_ID), BODY_FONT);
+  EXPECT_EQ(all.wordFontId(1, NOTOSANS_14_FONT_ID), HAND_FONT);
 
   pages.clear();
   parser.beginParse();
@@ -1254,7 +1254,7 @@ class PublisherBodyFontTest : public ChapterBlockDecorationTest {
   std::filesystem::path directory;
   void SetUp() override {
     ChapterBlockDecorationTest::SetUp();
-    parser.fontId = NOTOSERIF_14_FONT_ID;
+    parser.fontId = NOTOSANS_14_FONT_ID;
     directory = std::filesystem::temp_directory_path() / "crosspoint_body_font_test" /
                 ::testing::UnitTest::GetInstance()->current_test_info()->name();
     std::filesystem::create_directories(directory);
