@@ -43,6 +43,7 @@ class BookFontSystem {
     std::string hrefs[4];                          // by TtfEpdFont::Style role; empty = absent
     freeink::font::PsramVector<uint8_t> bytes[4];  // font files, empty = absent
     bool bytesLoaded = false;                      // read attempted
+    bool failed = false;                           // unreadable (e.g. obfuscated): use the reader font
   };
   struct Loaded {
     int fontId;

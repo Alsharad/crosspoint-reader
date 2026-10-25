@@ -161,15 +161,8 @@ bool BookFontSystem::loadFont(Family& family, const uint8_t pointSize, const int
       return true;
     }
   }
-  if (!readFamilyBytes(family)) return false;
+  if (family.failed || !readFamilyBytes(family)) return false;
 
-  if (loaded_.size() >= MAX_LOADED) {
-    const auto oldest = std::min_element(loaded_.begin(), loaded_.end(),
-                                         [](const Loaded& a, const Loaded& b) { return a.lastUse < b.lastUse; });
-    renderer_->unregisterTtfFont(oldest->fontId);
-    renderer_->removeFont(oldest->fontId);
-    loaded_.erase(oldest);
-  }
   auto font = makeUniqueNoThrow<TtfEpdFont>();
   if (!font) {
     LOG_ERR("BKF", "OOM: TtfEpdFont @%upt", pointSize);
@@ -180,8 +173,20 @@ bool BookFontSystem::loadFont(Family& family, const uint8_t pointSize, const int
     if (!bytes.empty()) font->addResidentSource(static_cast<uint8_t>(role), bytes.data(), bytes.size());
   }
   if (!font->load(pointSize, /*twoBit=*/true, /*glyphCacheBytes=*/64 * 1024, /*maxGlyphs=*/512)) {
-    LOG_ERR("BKF", "Failed to load embedded font @%upt", pointSize);
+    // Bad bytes stay bad: give the family up for this book instead of retrying every paragraph.
+    LOG_ERR("BKF", "Failed to load embedded font %08x; using the reader font", static_cast<unsigned>(family.hash));
+    family.failed = true;
+    font.reset();  // it points into the family's bytes
+    for (auto& bytes : family.bytes) freeink::font::PsramVector<uint8_t>().swap(bytes);
     return false;
+  }
+  // Evict only once the new font is usable, so a failed load never costs a working one.
+  if (loaded_.size() >= MAX_LOADED) {
+    const auto oldest = std::min_element(loaded_.begin(), loaded_.end(),
+                                         [](const Loaded& a, const Loaded& b) { return a.lastUse < b.lastUse; });
+    renderer_->unregisterTtfFont(oldest->fontId);
+    renderer_->removeFont(oldest->fontId);
+    loaded_.erase(oldest);
   }
   font->build(" ");
   renderer_->insertFont(fontId, font->family());
