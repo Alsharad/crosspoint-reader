@@ -245,16 +245,40 @@ constexpr std::string_view unquoteCss(std::string_view s) {
 
 // Hash of the first family in a font-family list; 0 when it is a generic family or
 // keyword, which leaves the text in the reader font.
-uint32_t firstFontFamily(const std::string_view value) {
-  const size_t comma = value.find(',');
-  const std::string_view name = unquoteCss(comma == std::string_view::npos ? value : value.substr(0, comma));
-  constexpr std::string_view GENERIC[] = {"serif",   "sans-serif", "monospace", "cursive",  "fantasy",
-                                          "inherit", "initial",    "unset",     "system-ui"};
-  if (name.empty()) return 0;
-  for (const std::string_view generic : GENERIC) {
-    if (iequalsAscii(name, generic)) return 0;
-  }
-  return CssParser::hashFontFamily(name);
+uint32_t fontFamilyFromList(const std::string_view value, const std::vector<CssFontFace>* faces) {
+  constexpr std::string_view GENERIC[] = {"serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui"};
+  uint32_t firstNamed = 0;
+  uint32_t embedded = 0;
+  bool keyword = false;
+  uint32_t keywordValue = 0;
+  forEachDelimitedToken(
+      value, [](const char c) { return c == ','; },
+      [&](const std::string_view token) {
+        if (keyword || embedded != 0) return;
+        const std::string_view name = unquoteCss(token);
+        if (name.empty()) return;
+        if (iequalsAscii(name, "inherit") || iequalsAscii(name, "unset")) {
+          keyword = true;
+          keywordValue = CssStyle::FONT_FAMILY_INHERIT;
+          return;
+        }
+        if (iequalsAscii(name, "initial")) {
+          keyword = true;
+          return;
+        }
+        for (const std::string_view generic : GENERIC) {
+          if (iequalsAscii(name, generic)) return;
+        }
+        const uint32_t hash = CssParser::hashFontFamily(name);
+        if (faces && std::any_of(faces->begin(), faces->end(),
+                                 [hash](const CssFontFace& face) { return face.family == hash; })) {
+          embedded = hash;
+        } else if (firstNamed == 0) {
+          firstNamed = hash;
+        }
+      });
+  if (keyword) return keywordValue;
+  return embedded != 0 ? embedded : firstNamed;
 }
 
 // Parse the entirety of s as a number into `out`. Accepts an optional leading
@@ -964,7 +988,8 @@ bool CssParser::tryInterpretFontSize(std::string_view val, CssLength& out) {
 
 // Declaration parsing
 
-void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style) {
+void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style,
+                                          const std::vector<CssFontFace>* faces) {
   const size_t colonPos = decl.find(':');
   if (colonPos == std::string_view::npos || colonPos == 0) return;
 
@@ -1080,7 +1105,7 @@ void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style
       style.defined.fontSize = 1;
     }
   } else if (iequalsAscii(name, "font-family")) {
-    style.fontFamily = firstFontFamily(value);
+    style.fontFamily = fontFamilyFromList(value, faces);
     style.defined.fontFamily = 1;
   } else if (iequalsAscii(name, "font-variant") || iequalsAscii(name, "font-variant-caps")) {
     bool smallCaps = false;
@@ -1373,7 +1398,7 @@ CssParser::ParseResult CssParser::loadFromStream(HalFile& source, const std::str
       --bodyDepth;
       if (bodyDepth == 0) {
         if (!skippingRule && !declarationTruncated && !declBuffer.empty()) {
-          parseDeclarationIntoStyle(declBuffer, currentStyle);
+          parseDeclarationIntoStyle(declBuffer, currentStyle, &fontFaces_);
         }
         if (!skippingRule) {
           processRuleBlockWithStyle(selector, currentStyle);
@@ -1393,7 +1418,7 @@ CssParser::ParseResult CssParser::loadFromStream(HalFile& source, const std::str
     if (!skippingRule) {
       if (c == ';') {
         if (!declarationTruncated && !declBuffer.empty()) {
-          parseDeclarationIntoStyle(declBuffer, currentStyle);
+          parseDeclarationIntoStyle(declBuffer, currentStyle, &fontFaces_);
         }
         declBuffer.clear();
         declarationTruncated = false;
@@ -1459,7 +1484,11 @@ CssParser::ParseResult CssParser::loadFromStream(HalFile& source, const std::str
   return ruleGrowthStopped_ || inputTruncated || incompleteInput ? ParseResult::Partial : ParseResult::Complete;
 }
 
-uint32_t CssParser::hashFontFamily(const std::string_view name) { return hashIgnoringAsciiCase(name); }
+uint32_t CssParser::hashFontFamily(const std::string_view name) {
+  // 0 and FONT_FAMILY_INHERIT are reserved for the reader font and `inherit`.
+  const uint32_t hash = hashIgnoringAsciiCase(name);
+  return hash == 0 || hash == CssStyle::FONT_FAMILY_INHERIT ? 1 : hash;
+}
 
 void CssParser::parseFontFace(const std::string_view declBlock, const std::string_view baseDir) {
   CssFontFace face;

@@ -254,7 +254,9 @@ class CssParser {
   PoolResult ensureStyleCapacity(size_t needed);
   PoolResult internStyle(const CssStyle& style, uint16_t& indexOut);
   static CssStyle parseDeclarations(std::string_view declBlock);
-  static void parseDeclarationIntoStyle(std::string_view decl, CssStyle& style);
+  // `faces` (the book's @font-face rules seen so far) lets font-family pick the first embedded name.
+  static void parseDeclarationIntoStyle(std::string_view decl, CssStyle& style,
+                                        const std::vector<CssFontFace>* faces = nullptr);
   static void parseBorderDeclaration(std::string_view name, std::string_view value, CssStyle& style);
 
   // Individual property value parsers

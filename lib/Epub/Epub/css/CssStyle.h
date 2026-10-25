@@ -205,9 +205,13 @@ struct CssStyle {
   uint8_t initialLetter = 0;  // initial-letter: lines a drop cap spans, 0 = normal
 
   bool preserveWhitespace = false;  // white-space: pre, pre-wrap or break-spaces
-  // First font-family name, hashed case-insensitively (CssParser::hashFontFamily); 0 for a
-  // generic family, which selects the reader font.
+  // font-family, hashed case-insensitively (CssParser::hashFontFamily): the first listed name
+  // the book embeds, else the first named family; 0 for a generic family or `initial`, which
+  // select the reader font; FONT_FAMILY_INHERIT for `inherit`/`unset`.
   uint32_t fontFamily = 0;
+  static constexpr uint32_t FONT_FAMILY_INHERIT = 0xFFFFFFFFu;
+  // True when the element names its own family; `inherit` keeps the parent's.
+  [[nodiscard]] bool setsFontFamily() const { return defined.fontFamily && fontFamily != FONT_FAMILY_INHERIT; }
 
   CssPropertyFlags defined;  // Tracks which properties were explicitly set
 

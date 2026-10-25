@@ -89,6 +89,7 @@ class ChapterHtmlSlimParser {
     float fontScale = 1.0f;
     bool hasFontFamily = false;
     uint32_t fontFamily = 0;  // CssStyle::fontFamily
+    bool blockLevel = false;  // pushed by a block element, so it sets the paragraph's family
   };
   std::vector<StyleStackEntry> inlineStyleStack;
   std::vector<BlockStyle> blockStyleStack;  // accumulated block styles from open ancestor elements
@@ -110,9 +111,13 @@ class ChapterHtmlSlimParser {
   bool effectivePreserveWhitespace = false;
   // Embedded font-family for the next word after PublisherFonts filtering; 0 = reader font.
   uint32_t effectiveFontFamily = 0;
+  // The same from block elements only: the paragraph's own family, which inline spans don't change.
+  uint32_t effectiveBlockFontFamily = 0;
   // Root-declared or predominant prose family, kept in the reader font in Accents mode.
   uint32_t bodyFontFamily = 0;
   bool bodyFontDetected = false;
+  std::vector<uint32_t> embeddedFamilies;
+  bool embeddedFamiliesKnown = false;
   bool detectBodyFont();
   bool pendingPageBreak = false;  // set when a page-break-after element closes
 
@@ -127,6 +132,8 @@ class ChapterHtmlSlimParser {
     bool bold = false;
     bool firstLetterPending = false;  // capture the current block's first letter
     int spanDepth = -1;               // capturing the text of the span at this depth
+    bool hasFamily = false;           // the letter's own font-family; otherwise the paragraph's
+    uint32_t family = 0;
   } dropCap;
 
   // Open elements with a CSS border or background shade. Each emits a PageBorderBox around
@@ -284,6 +291,8 @@ class ChapterHtmlSlimParser {
   int fontIdForScale(float scale) const;
   // The embedded family's font at `scale` when the book provides it, else fontIdForScale.
   int fontIdFor(float scale, uint32_t family) const;
+  // `family` after the PublisherFonts setting: 0 (the reader font) when it may not be used.
+  uint32_t publisherFamily(uint32_t family) const;
   int prepareBlockFont(ParsedText& text, float scale);
   static EpdFontFamily::Style fontStyleForTextDecoration(CssTextDecoration decoration);
   static void applyDirectionToEntry(StyleStackEntry& entry, const CssStyle& css);
@@ -337,6 +346,12 @@ class ChapterHtmlSlimParser {
   }
   void setParagraphIndentSpaces(const uint8_t spaces) { paragraphIndentSpaces = spaces; }
   void setPublisherFonts(const PublisherFonts mode) { publisherFonts = mode; }
+  // The book's @font-face families. Body font detection then counts only these and is
+  // skipped when there are none; until set, any named family counts.
+  void setEmbeddedFamilies(std::vector<uint32_t> families) {
+    embeddedFamilies = std::move(families);
+    embeddedFamiliesKnown = true;
+  }
 
   // One-shot parse: builds every page before returning (begin + step* + finish).
   bool parseAndBuildPages();

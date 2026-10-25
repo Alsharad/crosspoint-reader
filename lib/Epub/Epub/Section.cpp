@@ -486,6 +486,17 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   ctx->parser->setTextSpacing(spec.characterSpacing, spec.wordSpacingPercent);
   ctx->parser->setParagraphIndentSpaces(spec.paragraphIndentSpaces);
   ctx->parser->setPublisherFonts(spec.publisherFonts);
+  if (spec.publisherFonts != PublisherFonts::Off) {
+    // No cache file means the book declares no @font-face fonts.
+    std::vector<CssFontFace> faces;
+    CssParser::loadFontFaces(epub->getCachePath(), faces);
+    std::vector<uint32_t> families;
+    families.reserve(faces.size());
+    for (const CssFontFace& face : faces) {
+      if (std::find(families.begin(), families.end(), face.family) == families.end()) families.push_back(face.family);
+    }
+    ctx->parser->setEmbeddedFamilies(std::move(families));
+  }
   Hyphenator::setPreferredLanguage(epub->getLanguage());
   build_ = std::move(ctx);
 

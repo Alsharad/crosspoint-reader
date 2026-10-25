@@ -1297,6 +1297,20 @@ class PublisherBodyFontTest : public ChapterBlockDecorationTest {
     ADD_FAILURE() << "Missing word: " << word;
     return -1;
   }
+  // The paragraph font of the line holding `word`: 0 for the reader font.
+  int blockFontFor(const char* word) {
+    for (const auto& page : pages) {
+      for (const auto& element : page->elements) {
+        if (element->getTag() != TAG_PageLine) continue;
+        const auto& block = *static_cast<const PageLine*>(element.get())->getBlock();
+        for (uint16_t i = 0; i < block.wordCount(); ++i) {
+          if (strcmp(block.wordText(i), word) == 0) return block.getBlockStyle().fontId;
+        }
+      }
+    }
+    ADD_FAILURE() << "Missing word: " << word;
+    return -1;
+  }
 };
 
 TEST_F(PublisherBodyFontTest, ParagraphBodyFontDoesNotComeFromLeadingDateOrHeading) {
@@ -1346,6 +1360,60 @@ TEST_F(PublisherBodyFontTest, InlineAccentDoesNotChooseTheParagraphFamily) {
   EXPECT_EQ(parser.bodyFontFamily, CssParser::hashFontFamily("EBGaramond"));
   EXPECT_EQ(fontFor("Body"), 0);
   EXPECT_EQ(fontFor("accent"), 902100);
+}
+
+TEST_F(PublisherBodyFontTest, LeadingInlineAccentKeepsTheParagraphFont) {
+  // A paragraph opening with a span in a publisher font (a chapter's first phrase) keeps the
+  // reader font, and with it the reader font's line height; only the span's words switch.
+  parse(
+      "<html><body><p>Ordinary prose stays in the selected reader font.</p>"
+      "<p><span class='block'>Opening phrase</span> then the story goes on.</p></body></html>");
+  EXPECT_EQ(fontFor("Opening"), 902100);
+  EXPECT_EQ(fontFor("story"), 0);
+  EXPECT_EQ(blockFontFor("story"), 0);
+}
+
+TEST_F(PublisherBodyFontTest, LeadingInlineAccentKeepsTheParagraphFontInAllText) {
+  parse("<html><body><p><span class='block'>Opening phrase</span> then the story goes on.</p></body></html>",
+        PublisherFonts::All);
+  EXPECT_EQ(fontFor("Opening"), 902100);
+  EXPECT_EQ(blockFontFor("story"), 0);
+}
+
+TEST_F(PublisherBodyFontTest, BlockFamilySetsTheParagraphFont) {
+  parse("<html><body><p>Ordinary prose stays in the reader font.</p><p class='block'>Quotation</p></body></html>");
+  EXPECT_EQ(blockFontFor("Quotation"), 902100);
+  EXPECT_EQ(blockFontFor("Ordinary"), 0);
+}
+
+TEST_F(PublisherBodyFontTest, InheritKeepsTheParentFamily) {
+  parse(
+      "<html><body><p>Ordinary prose stays in the selected reader font.</p>"
+      "<p class='block'>Quote <span style='font-family: inherit'>kept</span> "
+      "<span style='font-family: unset'>also</span></p></body></html>");
+  EXPECT_EQ(fontFor("Quote"), 902100);
+  EXPECT_EQ(fontFor("kept"), 902100);
+  EXPECT_EQ(fontFor("also"), 902100);
+}
+
+TEST_F(PublisherBodyFontTest, BodyFontThatIsNotEmbeddedDoesNotChooseTheBodyFont) {
+  // body names a font the book does not include; the embedded prose font is the body font.
+  parser.setEmbeddedFamilies({CssParser::hashFontFamily("EBGaramond"), CssParser::hashFontFamily("YatraOne"),
+                              CssParser::hashFontFamily("Roboto")});
+  parse(
+      "<html><body style='font-family: Georgia, serif'>"
+      "<p class='indent'>Ordinary narrative prose in the publisher's body font.</p>"
+      "<p class='indent'>More narrative prose in the same body font.</p>"
+      "<p class='block'>Quotation</p></body></html>");
+  EXPECT_EQ(parser.bodyFontFamily, CssParser::hashFontFamily("EBGaramond"));
+  EXPECT_EQ(fontFor("Ordinary"), 0);
+  EXPECT_EQ(fontFor("Quotation"), 902100);
+}
+
+TEST_F(PublisherBodyFontTest, BookWithoutEmbeddedFontsSkipsBodyFontDetection) {
+  parser.setEmbeddedFamilies({});
+  parse("<html><body><p class='indent'>Ordinary prose.</p></body></html>");
+  EXPECT_FALSE(parser.bodyFontDetected);
 }
 
 TEST_F(PublisherBodyFontTest, ReaderFontParagraphsKeepMinorityEmbeddedAccents) {

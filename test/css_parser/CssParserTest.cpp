@@ -660,6 +660,29 @@ TEST_F(CssParserTest, DescendantRetriesWholeChildChain) {
   EXPECT_FALSE(style.hasFontStyle());
 }
 
+TEST_F(CssParserTest, FontFamilyListPicksTheFirstEmbeddedName) {
+  CssParser parser(cachePath());
+  ASSERT_EQ(loadCss(parser,
+                    "@font-face { font-family: 'DCC System'; src: url(saira.ttf); }\n"
+                    ".sys { font-family: Palatino, \"DCC System\", sans-serif; }\n"
+                    ".none { font-family: Palatino, Georgia, serif; }\n"
+                    ".generic { font-family: monospace; }\n"
+                    ".inherit { font-family: inherit; }\n"
+                    ".initial { font-family: initial; }\n",
+                    "OEBPS/Styles/"),
+            CssParser::ParseResult::Complete);
+  EXPECT_EQ(parser.resolveStyle("p", "sys").fontFamily, CssParser::hashFontFamily("DCC System"));
+  EXPECT_EQ(parser.resolveStyle("p", "none").fontFamily, CssParser::hashFontFamily("Palatino"));
+  const CssStyle generic = parser.resolveStyle("p", "generic");
+  EXPECT_TRUE(generic.setsFontFamily());
+  EXPECT_EQ(generic.fontFamily, 0u);
+  const CssStyle inherit = parser.resolveStyle("p", "inherit");
+  EXPECT_TRUE(inherit.defined.fontFamily);
+  EXPECT_FALSE(inherit.setsFontFamily());
+  EXPECT_TRUE(parser.resolveStyle("p", "initial").setsFontFamily());
+  EXPECT_EQ(parser.resolveStyle("p", "initial").fontFamily, 0u);
+}
+
 TEST_F(CssParserTest, CollectsFontFacesAndFontFamilies) {
   CssParser writer(cachePath());
   ASSERT_EQ(loadCss(writer,
