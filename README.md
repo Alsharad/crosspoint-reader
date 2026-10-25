@@ -1,4 +1,10 @@
-# CrossPoint Reader
+# CrossPoint GS
+
+> **CrossPoint GS is a personal fork of [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader).** It is CrossPoint's public 2.0.0rc build (commit [`cb2a4c78`](https://github.com/crosspoint-reader/crosspoint-reader/commit/cb2a4c78), the code of the published `2.0.0rc` binaries) with only the changes below on top, built with CrossPoint's own release-candidate settings. It shows as *CrossPoint GS* on the boot screen, in Settings and in About, and checks this fork's releases for updates. It adds **top and bottom reader status bars with placeable items**: each bar has seven slots (three left, one centered, three right) for the clock, date, battery, chapter page count, book percentage, book title or chapter title. Set them on the reader under *Settings → Reader → Customise Status Bar*, or on the device's web settings page.
+>
+> The status bar design is **[CrossInk](https://github.com/uxjulia/CrossInk)'s, by Julia Nguyen** ([`9a19a793`](https://github.com/uxjulia/CrossInk/commit/9a19a793a1b9c4b76a8bd7cea1ea95902cb1c9d4), `3558a681`, `168b88bc`, `901eb784`), ported to CrossPoint under the MIT license. CrossInk's *time left* and *stable page number* items are not included, because CrossPoint does not record the data they need. Everything below is CrossPoint's own README.
+
+---
 
 [![Fund contributors](https://img.shields.io/badge/%F0%9F%91%91_Fund_contributors-royalty.dev-BB953A?style=for-the-badge&labelColor=1a1a1a)](https://app.royalty.dev/crosspoint-reader/crosspoint-reader)
 
