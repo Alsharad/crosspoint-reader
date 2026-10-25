@@ -3202,11 +3202,11 @@ bool ChapterHtmlSlimParser::isEmbeddedFamily(const uint32_t family) const {
 }
 
 uint32_t ChapterHtmlSlimParser::chooseFamily(const uint32_t named, const CssGenericFamily generic) const {
+  const bool mapped =
+      generic != CssGenericFamily::None && (genericFontsMask & (1u << static_cast<uint8_t>(generic))) != 0;
+  if (mapped && (genericFontsMask & GENERIC_FONTS_PREFERRED) != 0) return genericFamilyId(generic);
   if (named != 0 && isEmbeddedFamily(named)) return named;
-  if (generic != CssGenericFamily::None && (genericFontsMask & (1u << static_cast<uint8_t>(generic))) != 0) {
-    return genericFamilyId(generic);
-  }
-  return named;
+  return mapped ? genericFamilyId(generic) : named;
 }
 
 uint32_t ChapterHtmlSlimParser::publisherFamily(const uint32_t family) const {

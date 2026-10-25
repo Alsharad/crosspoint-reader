@@ -359,6 +359,7 @@ class ChapterHtmlSlimParser {
   void setGenericFonts(const uint8_t mask) { genericFontsMask = mask; }
   // The font a family list draws in: the named family when the book embeds it, else the
   // mapped generic family's id, else the named family (which falls back to the reader font).
+  // With GENERIC_FONTS_PREFERRED a mapped generic family comes first.
   uint32_t chooseFamily(uint32_t named, CssGenericFamily generic) const;
   bool isEmbeddedFamily(uint32_t family) const;
 

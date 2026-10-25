@@ -51,6 +51,7 @@ class TextSettingsActivity final : public UiTabListActivity {
     SansSerifFont,
     MonospaceFont,
     CursiveFont,
+    PreferFamilyFonts,  // checkbox
 #endif
     Count
   };

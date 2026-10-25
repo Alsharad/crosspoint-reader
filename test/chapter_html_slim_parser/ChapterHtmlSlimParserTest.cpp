@@ -1433,6 +1433,21 @@ TEST_F(PublisherBodyFontTest, MappedGenericFamilyReplacesAMissingNamedFont) {
   EXPECT_EQ(fontFor("Run"), 0);
 }
 
+TEST_F(PublisherBodyFontTest, PreferredFamilyFontsWinOverEmbeddedNames) {
+  renderer.embeddedFamilies.push_back(genericFamilyId(CssGenericFamily::Monospace));
+  parser.setEmbeddedFamilies({CssParser::hashFontFamily("EBGaramond"), CssParser::hashFontFamily("YatraOne"),
+                              CssParser::hashFontFamily("Roboto")});
+  parser.setGenericFonts((1u << static_cast<uint8_t>(CssGenericFamily::Monospace)) | GENERIC_FONTS_PREFERRED);
+  parse(
+      "<html><body><p>Ordinary prose stays in the selected reader font.</p>"
+      "<p>Run <span style='font-family: Roboto, monospace'>quote</span> and "
+      "<span style='font-family: Roboto'>named</span> and "
+      "<span style='font-family: Roboto, serif'>unmapped</span>.</p></body></html>");
+  EXPECT_EQ(fontFor("quote"), 903100);     // monospace is mapped and preferred over embedded Roboto
+  EXPECT_EQ(fontFor("named"), 902100);     // no generic family listed: the publisher's font stays
+  EXPECT_EQ(fontFor("unmapped"), 902100);  // serif is not mapped: the publisher's font stays
+}
+
 TEST_F(PublisherBodyFontTest, MappedSerifBodyStaysInTheReaderFontUnlessAllText) {
   renderer.embeddedFamilies.push_back(genericFamilyId(CssGenericFamily::Serif));
   parser.setEmbeddedFamilies({});

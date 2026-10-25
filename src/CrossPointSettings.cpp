@@ -396,6 +396,10 @@ ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWid
       }
       signature = (signature ^ static_cast<uint32_t>(i + 1)) * 16777619U;
     }
+    if (spec.genericFonts != 0 && preferFamilyFonts) {
+      spec.genericFonts |= GENERIC_FONTS_PREFERRED;
+      signature = (signature ^ GENERIC_FONTS_PREFERRED) * 16777619U;
+    }
     if (spec.genericFonts != 0) spec.genericFontsSignature = signature == 0 ? 1 : signature;
   }
 #endif

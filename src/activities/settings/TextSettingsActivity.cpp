@@ -27,11 +27,11 @@ constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_L
 constexpr StrId LAYOUT_ROW_NAME_IDS[] = {
     StrId::STR_LINE_SPACING,          StrId::STR_WORD_SPACING, StrId::STR_CHARACTER_SPACING, StrId::STR_EXTRA_SPACING,
     StrId::STR_PARAGRAPH_INDENTATION, StrId::STR_ALIGNMENT,    StrId::STR_SCREEN_MARGIN};
-constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING,   StrId::STR_HYPHENATION, StrId::STR_EMBEDDED_STYLE,
-                                        StrId::STR_TEXT_AA,
+constexpr StrId STYLE_ROW_NAME_IDS[] = {
+    StrId::STR_FOCUS_READING,   StrId::STR_HYPHENATION,        StrId::STR_EMBEDDED_STYLE,  StrId::STR_TEXT_AA,
 #if CROSSPOINT_VECTOR_FONTS
-                                        StrId::STR_PUBLISHER_FONTS, StrId::STR_SERIF_FONT,  StrId::STR_SANS_SERIF_FONT,
-                                        StrId::STR_MONOSPACE_FONT,  StrId::STR_CURSIVE_FONT
+    StrId::STR_PUBLISHER_FONTS, StrId::STR_SERIF_FONT,         StrId::STR_SANS_SERIF_FONT, StrId::STR_MONOSPACE_FONT,
+    StrId::STR_CURSIVE_FONT,    StrId::STR_PREFER_FAMILY_FONTS
 #endif
 };
 #if CROSSPOINT_VECTOR_FONTS
@@ -535,6 +535,11 @@ void TextSettingsActivity::confirmStyleRow(int row) {
       SETTINGS.textAntiAliasing = !SETTINGS.textAntiAliasing;
       break;
 #if CROSSPOINT_VECTOR_FONTS
+    case StyleRow::PreferFamilyFonts:
+      SETTINGS.preferFamilyFonts = !SETTINGS.preferFamilyFonts;
+      break;
+#endif
+#if CROSSPOINT_VECTOR_FONTS
     case StyleRow::PublisherFonts:
       optionPopup_.show(StrId::STR_PUBLISHER_FONTS, PUBLISHER_FONTS_IDS,
                         static_cast<int>(std::size(PUBLISHER_FONTS_IDS)), SETTINGS.publisherFonts, [](int idx) {
@@ -589,6 +594,10 @@ bool TextSettingsActivity::styleRowChecked(int row) const {
       return SETTINGS.embeddedStyle;
     case StyleRow::AntiAliasing:
       return SETTINGS.textAntiAliasing;
+#if CROSSPOINT_VECTOR_FONTS
+    case StyleRow::PreferFamilyFonts:
+      return SETTINGS.preferFamilyFonts;
+#endif
 
     default:
       return false;

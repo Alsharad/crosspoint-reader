@@ -369,6 +369,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // CssGenericFamily - 1 (empty = the reader font). Used while Publisher Fonts is not Off.
   static constexpr int GENERIC_FONT_COUNT = 4;
   char genericFontNames[GENERIC_FONT_COUNT][32] = {};
+  // Mapped generic family fonts win over fonts the book names (KOReader's "Ignore publisher font names").
+  uint8_t preferFamilyFonts = 0;
   static constexpr const char* GENERIC_FONT_KEYS[GENERIC_FONT_COUNT] = {"serifFont", "sansSerifFont", "monospaceFont",
                                                                         "cursiveFont"};
   // Dictionary folder name under /dictionaries (empty = no dictionary)

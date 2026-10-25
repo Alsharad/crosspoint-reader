@@ -121,6 +121,9 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                            StrId::STR_CAT_READER)
              .withTextSettings());
   }
+  emit(SettingInfo::Toggle(StrId::STR_PREFER_FAMILY_FONTS, &CrossPointSettings::preferFamilyFonts, "preferFamilyFonts",
+                           StrId::STR_CAT_READER)
+           .withTextSettings());
 #endif
   emit(SettingInfo::Toggle(StrId::STR_FOCUS_READING, &CrossPointSettings::focusReadingEnabled, "focusReadingEnabled",
                            StrId::STR_CAT_READER)

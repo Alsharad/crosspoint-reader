@@ -5,6 +5,10 @@
 // reader font wherever the book uses its body font.
 enum class PublisherFonts : uint8_t { Off = 0, Accents = 1, All = 2 };
 
+// ReaderRenderSpec::genericFonts bit: a mapped generic family wins over the publisher's named
+// font (KOReader's "Ignore publisher font names"); the other bits are CssGenericFamily values.
+constexpr uint8_t GENERIC_FONTS_PREFERRED = 0x80;
+
 // The resolved text-rendering configuration a reader hands to the layout
 // engine. Section-cache validation keys on every field: a section file built
 // with a different spec is discarded and rebuilt.
